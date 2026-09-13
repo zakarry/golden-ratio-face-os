@@ -18,8 +18,8 @@ import dynamic from 'next/dynamic';
 
 import FaceOSNav from '@/components/FaceOSNav';
 import HomeDashboard from '@/components/HomeDashboard';
+import type { UserLevel } from '@/types/userLevel';
 
-// Existing tabs reused as-is — no refactoring in Phase A
 const TabDiagnosis   = dynamic(() => import('@/components/karte/TabDiagnosis'),   { ssr: false });
 const FaceConditionPage = dynamic(() => import('@/components/karte/FaceConditionPage'), { ssr: false });
 const TabDailyMakeup = dynamic(() => import('@/components/karte/TabDailyMakeup'), { ssr: false });
@@ -40,12 +40,12 @@ const NAV_LABELS: Record<NavId, string> = {
 export default function Home() {
   const [activeNav, setActiveNav] = useState<NavId>('home');
   const [gender, setGender]       = useState<Gender>('female');
+  const [level, setLevel]         = useState<UserLevel>('advanced');
 
   const isMale = gender === 'male';
 
   return (
     <div className={`min-h-screen transition-colors duration-300 ${isMale ? 'bg-[#F0EDE8]' : 'bg-[#F7F1E8]'}`}>
-      {/* ── Header ── */}
       <header className="border-b border-stone-200/60 bg-white/90 backdrop-blur-sm sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
@@ -62,7 +62,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Mobile: current section label */}
           <div className="lg:hidden">
             <span className={`text-xs font-semibold ${isMale ? 'text-stone-700' : 'text-amber-700'}`}>
               {NAV_LABELS[activeNav]}
@@ -71,22 +70,21 @@ export default function Home() {
         </div>
       </header>
 
-      {/* ── Body: sidebar + content ── */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex gap-6">
         <FaceOSNav
           active={activeNav}
           onNavigate={setActiveNav}
           gender={gender}
           onGenderChange={setGender}
+          level={level}
+          onLevelChange={setLevel}
         />
 
-        {/* ── Main content ── */}
         <main className="flex-1 min-w-0 pb-20 lg:pb-8">
           {activeNav === 'home' && (
             <HomeDashboard gender={gender} onNavigate={setActiveNav} />
           )}
 
-          {/* Face Identity → first experience only: scan → structure → save → completion */}
           {activeNav === 'identity' && (
             <TabDiagnosis
               gender={gender}
@@ -95,22 +93,18 @@ export default function Home() {
             />
           )}
 
-          {/* Face Condition → daily condition (default) + monthly comparison tab */}
           {activeNav === 'condition' && (
             <FaceConditionPage onNavigate={(nav) => setActiveNav(nav as typeof activeNav)} />
           )}
 
-          {/* Face Design → reuses TabDailyMakeup (makeup design, unchanged) */}
           {activeNav === 'design' && (
-            <TabDailyMakeup onNavigate={(nav) => setActiveNav(nav as typeof activeNav)} />
+            <TabDailyMakeup level={level} onNavigate={(nav) => setActiveNav(nav as typeof activeNav)} />
           )}
 
-          {/* 顔カルテ → reuses TabHistory (record list, unchanged) */}
           {activeNav === 'karte' && (
             <TabHistory onNavigate={(nav) => setActiveNav(nav as typeof activeNav)} />
           )}
 
-          {/* 顔インサイト → placeholder until Phase C */}
           {activeNav === 'insight' && (
             <InsightPlaceholder isMale={isMale} />
           )}
@@ -119,8 +113,6 @@ export default function Home() {
     </div>
   );
 }
-
-// ─── Insight placeholder (Phase C will replace this) ──────────────────────────
 
 function InsightPlaceholder({ isMale }: { isMale: boolean }) {
   return (
