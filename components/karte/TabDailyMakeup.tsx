@@ -142,10 +142,13 @@ export default function TabDailyMakeup({ level = 'advanced', onNavigate }: { lev
       faceYogaSkipped: faceYogaSkipped || undefined,
       purpose,
       scene: sceneId ?? undefined,
+      level,
+      styleId: styleId ?? undefined,
+      providerId: providerId !== 'standard_ai' ? providerId : undefined,
     });
     saveFaceKarteRecord(record);
     setSaved(true);
-  }, [beforeResult, beforeAfter, faceYogaPlan, faceYogaSkipped, purpose, sceneId]);
+  }, [beforeResult, beforeAfter, faceYogaPlan, faceYogaSkipped, purpose, sceneId, level, styleId, providerId]);
 
   // ── Render ──
 
@@ -187,7 +190,7 @@ export default function TabDailyMakeup({ level = 'advanced', onNavigate }: { lev
       {step === 'condition' && (
         <ConditionStep
           onContinue={() => setStep('preparation')}
-          onBack={() => setStep(level === 'intermediate' ? 'style' : 'purpose')}
+          onBack={() => setStep('purpose')}
         />
       )}
 

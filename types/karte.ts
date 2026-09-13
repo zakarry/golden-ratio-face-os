@@ -1,5 +1,7 @@
 import type { AnalysisResult } from './analysis';
 import type { DetectedGuide } from '@/lib/faceLandmarks';
+import type { UserLevel } from './userLevel';
+import type { StyleId } from '@/lib/idealStyleChoices';
 
 // ─── Record types ─────────────────────────────────────────────────────────────
 
@@ -113,6 +115,12 @@ export interface FaceKarteRecord {
   // Daily journey context
   purpose?: MakeupPurpose;
   scene?: string;
+  /** そのレコードを作った時点でのレベル軸（初級/中級/上級） */
+  level?: UserLevel;
+  /** 中級フローで選んだ理想スタイル（あれば） */
+  styleId?: StyleId;
+  /** レビューを受けたFace Designer（Standard AI以外を選んだ場合のみ） */
+  providerId?: FaceDesignerProviderId;
 
   // Metadata
   note?: string;

@@ -75,13 +75,15 @@ export async function getRecordsFromSupabase(_userId: string): Promise<FaceKarte
 // ─── Record builder ───────────────────────────────────────────────────────────
 
 import type { AnalysisResult } from '@/types/analysis';
-import type { MakeupPlan, BeforeAfter, FaceYogaPlan, MakeupPurpose } from '@/types/karte';
+import type { MakeupPlan, BeforeAfter, FaceYogaPlan, MakeupPurpose, FaceDesignerProviderId } from '@/types/karte';
 import type { DetectedGuide } from '@/lib/faceLandmarks';
+import type { UserLevel } from '@/types/userLevel';
+import type { StyleId } from '@/lib/idealStyleChoices';
 
 export function buildKarteRecord(
   type: KarteRecordType,
   analysis: AnalysisResult,
-  options: { makeupPlan?: MakeupPlan; beforeAfter?: BeforeAfter; note?: string; faceYogaPlan?: FaceYogaPlan; faceYogaSkipped?: boolean; purpose?: MakeupPurpose; scene?: string; imageSrc?: string; guide?: DetectedGuide } = {},
+  options: { makeupPlan?: MakeupPlan; beforeAfter?: BeforeAfter; note?: string; faceYogaPlan?: FaceYogaPlan; faceYogaSkipped?: boolean; purpose?: MakeupPurpose; scene?: string; imageSrc?: string; guide?: DetectedGuide; level?: UserLevel; styleId?: StyleId; providerId?: FaceDesignerProviderId } = {},
 ): FaceKarteRecord {
   return {
     id: `karte_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -108,6 +110,9 @@ export function buildKarteRecord(
     faceYogaSkipped: options.faceYogaSkipped,
     purpose:     options.purpose,
     scene:       options.scene,
+    level:       options.level,
+    styleId:     options.styleId,
+    providerId:  options.providerId,
     note:        options.note,
   };
 }
