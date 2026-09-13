@@ -10,18 +10,20 @@ import MakeupAdvice from '@/components/MakeupAdvice';
 import StrengthsPanel from '@/components/StrengthsPanel';
 import FaceYogaPanel from '@/components/FaceYogaPanel';
 import SaveKarteButton from './SaveKarteButton';
-import { analyzeFaceFromGuide, generateMakeupAdvice, generateIllusionAdvice, computeTargetGuide } from '@/lib/analyzeFaceMock';
+import { analyzeFaceFromGuide, generateMakeupAdvice, generateIllusionAdvice, computeTargetGuide } from '@/lib/analyzeFaceIdentity';
 import { detectFaceLandmarks } from '@/lib/faceLandmarks';
 import { buildKarteRecord, saveFaceKarteRecord, getBaselineRecord } from '@/lib/karteStorage';
 import { computeBeforeAfterSummary, computeImpressionComparison, generateFaceDesignerComment } from '@/lib/monthlyComparison';
 import { PURPOSES, SCENES, SCENE_TO_PURPOSES, PURPOSE_TO_MAKEUP, type PurposeId, type SceneId } from '@/lib/faceDesignChoices';
+import { STYLE_CATEGORIES, IDEAL_STYLES, STYLE_TO_PURPOSE, getStylesByCategory, type StyleId, type StyleCategoryId } from '@/lib/idealStyleChoices';
+import type { UserLevel } from '@/types/userLevel';
 import type { AnalysisResult, ScoringModeId, ImpressionId } from '@/types/analysis';
-import type { MakeupPurpose, BeforeAfter, ImpressionComparison, FaceDesignerComment, FaceYogaPlan } from '@/types/karte';
-import { MAKEUP_PURPOSE_LABELS, FACE_DESIGNER_ENDING_MESSAGE } from '@/types/karte';
+import type { MakeupPurpose, BeforeAfter, ImpressionComparison, FaceDesignerComment, FaceYogaPlan, FaceDesignerProviderId } from '@/types/karte';
+import { MAKEUP_PURPOSE_LABELS, FACE_DESIGNER_ENDING_MESSAGE, FACE_DESIGNER_PROVIDERS } from '@/types/karte';
 import type { DetectedGuide } from '@/lib/faceLandmarks';
 
 type DetectionState = 'idle' | 'detecting' | 'done' | 'error';
-type Step = 'purpose' | 'scene' | 'condition' | 'preparation' | 'scan' | 'design' | 'compare';
+type Step = 'style' | 'purpose' | 'scene' | 'condition' | 'preparation' | 'scan' | 'design' | 'compare';
 
 const SCORING_FROM_PURPOSE: Record<MakeupPurpose, ScoringModeId> = {
   natural: 'natural', stage: 'stage', photo: 'photo',
@@ -32,18 +34,32 @@ const IMPRESSION_FROM_PURPOSE: Record<MakeupPurpose, ImpressionId> = {
   kirei: 'kirei', kawaii: 'kawaii', cool: 'kirei',
 };
 
-const STEPS: Array<{ id: Step; label: string }> = [
-  { id: 'scene',        label: '予定' },
-  { id: 'purpose',      label: '印象' },
-  { id: 'condition',    label: '状態' },
-  { id: 'preparation',  label: '準備' },
-  { id: 'scan',         label: '撮影' },
-  { id: 'design',       label: '設計' },
-  { id: 'compare',      label: 'Before/After' },
-];
+// レベルごとに歩む道のりが違う（Concept Book「レベル軸」参照）。
+//   上級：シーン → 印象 という状況起点のフローそのまま
+//   中級：理想スタイルという「なりたい顔」起点のフローに差し替え
+//   初級：選択自体を挟まず、最小構成でコンディション確認へ
+function getStepsForLevel(level: UserLevel): Array<{ id: Step; label: string }> {
+  const tail: Array<{ id: Step; label: string }> = [
+    { id: 'condition',    label: '状態' },
+    { id: 'preparation',  label: '準備' },
+    { id: 'scan',         label: '撮影' },
+    { id: 'design',       label: '設計' },
+    { id: 'compare',      label: 'Before/After' },
+  ];
+  if (level === 'beginner') return tail;
+  if (level === 'intermediate') return [{ id: 'style', label: 'なりたい顔' }, ...tail];
+  return [{ id: 'scene', label: '予定' }, { id: 'purpose', label: '印象' }, ...tail];
+}
 
-export default function TabDailyMakeup({ onNavigate }: { onNavigate?: (nav: string) => void }) {
-  const [step, setStep]                     = useState<Step>('scene');
+function initialStepForLevel(level: UserLevel): Step {
+  if (level === 'beginner') return 'condition';
+  if (level === 'intermediate') return 'style';
+  return 'scene';
+}
+
+export default function TabDailyMakeup({ level = 'advanced', onNavigate }: { level?: UserLevel; onNavigate?: (nav: string) => void }) {
+  const [step, setStep]                     = useState<Step>(() => initialStepForLevel(level));
+  const [styleId, setStyleId]               = useState<StyleId | null>(null);
   const [purposeId, setPurposeId]           = useState<PurposeId | null>(null);
   const [sceneId, setSceneId]               = useState<SceneId | null>(null);
   const [faceYogaPlan, setFaceYogaPlan]     = useState<FaceYogaPlan | null>(null);
@@ -59,6 +75,10 @@ export default function TabDailyMakeup({ onNavigate }: { onNavigate?: (nav: stri
   const [beforeAfter, setBeforeAfter]       = useState<BeforeAfter | null>(null);
   const [impression, setImpression]         = useState<ImpressionComparison | null>(null);
   const [designerComment, setDesignerComment] = useState<FaceDesignerComment | null>(null);
+  const [providerId, setProviderId]           = useState<FaceDesignerProviderId>('standard_ai');
+
+  // 中身が整っているプロバイダのみ選択肢として出す（miss_world/shiseido/professionalはまだ空スタブ）
+  const SELECTABLE_PROVIDERS: FaceDesignerProviderId[] = ['standard_ai', 'avance'];
 
   const baseline = getBaselineRecord();
   const purpose = purposeId ? PURPOSE_TO_MAKEUP[purposeId] : 'natural';
@@ -98,11 +118,11 @@ export default function TabDailyMakeup({ onNavigate }: { onNavigate?: (nav: stri
         const summary = computeBeforeAfterSummary(beforeResult, result);
         setBeforeAfter({ beforeAnalysis: beforeResult, afterAnalysis: result, changeSummary: summary });
         setImpression(computeImpressionComparison(beforeResult, result, purpose));
-        setDesignerComment(generateFaceDesignerComment(beforeResult, result, purpose));
+        setDesignerComment(generateFaceDesignerComment(beforeResult, result, purpose, providerId));
         setStep('compare');
       }
     } catch { setAfterDetState('error'); }
-  }, [afterSrc, beforeResult, purpose]);
+  }, [afterSrc, beforeResult, purpose, providerId]);
 
   const handleReset = useCallback(() => {
     if (beforeSrc?.startsWith('blob:')) URL.revokeObjectURL(beforeSrc);
@@ -131,7 +151,19 @@ export default function TabDailyMakeup({ onNavigate }: { onNavigate?: (nav: stri
 
   return (
     <div className="space-y-6">
-      <StepProgress step={step} />
+      <StepProgress step={step} steps={getStepsForLevel(level)} />
+
+      {/* ── STEP: STYLE（中級：なりたい顔）── */}
+      {step === 'style' && (
+        <StyleStep
+          selected={styleId}
+          onSelect={(id) => {
+            setStyleId(id);
+            setPurposeId(STYLE_TO_PURPOSE[id]);
+            setStep('condition');
+          }}
+        />
+      )}
 
       {/* ── STEP: SCENE ── */}
       {step === 'scene' && (
@@ -155,7 +187,7 @@ export default function TabDailyMakeup({ onNavigate }: { onNavigate?: (nav: stri
       {step === 'condition' && (
         <ConditionStep
           onContinue={() => setStep('preparation')}
-          onBack={() => setStep('purpose')}
+          onBack={() => setStep(level === 'intermediate' ? 'style' : 'purpose')}
         />
       )}
 
@@ -219,11 +251,14 @@ export default function TabDailyMakeup({ onNavigate }: { onNavigate?: (nav: stri
                   <p className="text-xs font-semibold text-stone-400 tracking-widest uppercase">メイク前</p>
                   <p className="text-[11px] text-amber-600 font-medium mt-0.5">
                     {sceneId && `${SCENES.find(s => s.id === sceneId)?.label} · `}
+                    {styleId && `${IDEAL_STYLES.find(s => s.id === styleId)?.label} · `}
                     {purposeId ? PURPOSES.find(p => p.id === purposeId)?.label : MAKEUP_PURPOSE_LABELS[purpose]}
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => setStep('scene')} className="text-[10px] text-stone-400 border border-stone-200 rounded-full px-2.5 py-1 hover:border-stone-400 transition-colors">目的変更</button>
+                  {level !== 'beginner' && (
+                    <button onClick={() => setStep(initialStepForLevel(level))} className="text-[10px] text-stone-400 border border-stone-200 rounded-full px-2.5 py-1 hover:border-stone-400 transition-colors">目的変更</button>
+                  )}
                   <button onClick={handleReset} className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium border border-stone-200 text-stone-400 hover:border-red-200 hover:text-red-400 bg-white transition-all">
                     <X className="w-3 h-3" />やり直す
                   </button>
@@ -231,7 +266,7 @@ export default function TabDailyMakeup({ onNavigate }: { onNavigate?: (nav: stri
               </div>
               <div className="px-4 pb-5">
                 <div className="flex justify-center items-center rounded-xl overflow-hidden bg-stone-50 border border-stone-100">
-                  <FaceCanvas imageSrc={beforeSrc!} showGuides showGoldenRatio showTriangle guide={beforeGuide} targetGuide={targetGuide} triangleAnalysis={beforeResult.triangleAnalysis} detectionState={detectionState} simulationMode={'current' as SimulationMode} />
+                  <FaceCanvas imageSrc={beforeSrc!} showGuides showGoldenRatio={level !== 'beginner'} showTriangle={level !== 'beginner'} guide={beforeGuide} targetGuide={targetGuide} triangleAnalysis={beforeResult.triangleAnalysis} detectionState={detectionState} simulationMode={'current' as SimulationMode} />
                 </div>
               </div>
             </div>
@@ -254,12 +289,34 @@ export default function TabDailyMakeup({ onNavigate }: { onNavigate?: (nav: stri
               <span className="text-[11px] font-semibold text-stone-500 tracking-wide">今日の錯覚トリックメイク</span>
               <span className="text-[10px] text-stone-300">{MAKEUP_PURPOSE_LABELS[purpose]}</span>
             </div>
-            <MakeupAdvice advice={makeupAdvice} />
+            <MakeupAdvice advice={makeupAdvice} maxItems={level === 'beginner' ? 3 : undefined} />
 
             <div className="flex items-baseline gap-2 px-1">
               <span className="text-[11px] font-semibold text-stone-500 tracking-wide">錯視テクニック</span>
             </div>
             <IllusionAdvicePanel sections={illusionAdvice} modeId={scoringMode} />
+
+            {/* Face Designer（ブランド）選択 */}
+            <div className="bg-white rounded-2xl shadow-sm border border-stone-200/50 px-5 py-4">
+              <p className="text-xs font-semibold text-stone-400 tracking-widest uppercase mb-2">Face Designer</p>
+              <p className="text-[11px] text-stone-400 mb-3">誰の解釈でレビューを受けるか選べます。</p>
+              <div className="flex flex-wrap gap-2">
+                {SELECTABLE_PROVIDERS.map((id) => {
+                  const active = providerId === id;
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => setProviderId(id)}
+                      className={`px-3 py-1.5 rounded-full text-[11px] font-medium border transition-all duration-200 ${
+                        active ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white border-stone-200 text-stone-500 hover:border-amber-200'
+                      }`}
+                    >
+                      {FACE_DESIGNER_PROVIDERS[id].name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             {/* After upload prompt */}
             <div className="bg-white rounded-2xl shadow-sm border border-stone-200/50 overflow-hidden">
@@ -362,21 +419,78 @@ export default function TabDailyMakeup({ onNavigate }: { onNavigate?: (nav: stri
 
 // ─── Step progress indicator ──────────────────────────────────────────────────
 
-function StepProgress({ step }: { step: Step }) {
-  const current = STEPS.findIndex(s => s.id === step);
+function StepProgress({ step, steps }: { step: Step; steps: Array<{ id: Step; label: string }> }) {
+  const current = steps.findIndex(s => s.id === step);
   return (
     <div className="flex items-center gap-0 bg-white rounded-2xl shadow-sm border border-stone-200/50 overflow-hidden overflow-x-auto">
-      {STEPS.map((s, i) => {
+      {steps.map((s, i) => {
         const done = i < current;
         const active = i === current;
         return (
           <div key={s.id} className={`flex-1 flex items-center justify-center py-3 text-[10px] font-semibold transition-colors whitespace-nowrap ${active ? 'bg-amber-500 text-white' : done ? 'bg-stone-100 text-stone-500' : 'text-stone-300'}`}>
             {done && <CheckCircle2 className="w-3 h-3 mr-1 flex-shrink-0" />}
             {s.label}
-            {i < STEPS.length - 1 && !active && <ChevronRight className="w-3 h-3 ml-1 opacity-30 flex-shrink-0" />}
+            {i < steps.length - 1 && !active && <ChevronRight className="w-3 h-3 ml-1 opacity-30 flex-shrink-0" />}
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ─── Step: 理想スタイル（中級） ─────────────────────────────────────────────
+
+function StyleStep({
+  selected, onSelect,
+}: {
+  selected: StyleId | null;
+  onSelect: (id: StyleId) => void;
+}) {
+  const [category, setCategory] = useState<StyleCategoryId>(STYLE_CATEGORIES[0].id);
+  const styles = getStylesByCategory(category);
+
+  return (
+    <div className="max-w-3xl mx-auto">
+      <StepHeader
+        badge="なりたい顔"
+        title="理想スタイルを選ぶ"
+        subtitle="今の顔と、理想スタイルとのギャップを埋める提案をします。"
+        helper="一番近いイメージをお選びください。"
+      />
+
+      {/* カテゴリタブ */}
+      <div className="flex flex-wrap justify-center gap-2 mt-6">
+        {STYLE_CATEGORIES.map(c => (
+          <button
+            key={c.id}
+            onClick={() => setCategory(c.id)}
+            className={`px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-all duration-200 ${
+              category === c.id
+                ? 'bg-amber-500 border-amber-500 text-white'
+                : 'bg-white border-stone-200 text-stone-500 hover:border-amber-200'
+            }`}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+
+      {/* スタイルカード */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6">
+        {styles.map(s => {
+          const active = selected === s.id;
+          return (
+            <button
+              key={s.id}
+              onClick={() => onSelect(s.id)}
+              className={`text-left rounded-2xl px-4 py-4 transition-all duration-200 border ${active ? 'bg-amber-500 border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-200 hover:border-amber-200 hover:bg-amber-50/40'}`}
+            >
+              <p className={`text-sm font-semibold ${active ? 'text-white' : 'text-stone-700'}`}>{s.label}</p>
+              <p className={`text-[11px] mt-1 leading-relaxed ${active ? 'text-white/80' : 'text-stone-400'}`}>{s.blurb}</p>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

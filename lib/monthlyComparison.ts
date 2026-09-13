@@ -114,6 +114,7 @@ import type {
   StructureComparison,
 } from '@/types/karte';
 import { FACE_DESIGNER_PROVIDERS, MAKEUP_PURPOSE_LABELS } from '@/types/karte';
+import { getFaceRule } from '@/lib/faceRules';
 
 const PURPOSE_IMPRESSION_LABEL: Partial<Record<MakeupPurpose, string>> = {
   kirei:   '綺麗',
@@ -323,10 +324,23 @@ export function generateFaceDesignerComment(
     { number: '③', title: '次回さらに良くするなら', body: suggestion },
   ];
 
+  // ── ④ ブランドのFace Rule（解釈）── AIの解析(①②③)とは別レイヤー
+  const faceRule = getFaceRule(providerId);
+  if (faceRule) {
+    sections.push({
+      number: '④',
+      title: `${provider.name}からの提案`,
+      body: faceRule.reviewNote,
+    });
+  }
+
   return {
     provider,
     sections,
-    recommendations: { products: [], techniques: [] },
+    recommendations: {
+      products: [],
+      techniques: faceRule?.recommendedTechniques.map((name) => ({ name })) ?? [],
+    },
   };
 }
 

@@ -6,6 +6,7 @@ import type { MakeupAdvice as MakeupAdviceType, StyleOperation, ContrastLevel, B
 
 interface MakeupAdviceProps {
   advice: MakeupAdviceType[];
+  maxItems?: number;
 }
 
 // ─── Style framework badge configs ───────────────────────────────────────────
@@ -166,7 +167,8 @@ function FrameworkLegend() {
 
 // ─── Panel ────────────────────────────────────────────────────────────────────
 
-export default function MakeupAdvice({ advice }: MakeupAdviceProps) {
+export default function MakeupAdvice({ advice, maxItems }: MakeupAdviceProps) {
+  const items = maxItems ? advice.slice(0, maxItems) : advice;
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-champagne/40 p-6">
       <div className="flex items-center gap-2 mb-4">
@@ -177,7 +179,7 @@ export default function MakeupAdvice({ advice }: MakeupAdviceProps) {
       </div>
 
       <div className="space-y-2">
-        {advice.map((item, idx) => (
+        {items.map((item, idx) => (
           <AdviceCard key={idx} item={item} defaultOpen={idx === 0} />
         ))}
       </div>

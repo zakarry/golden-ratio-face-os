@@ -207,8 +207,9 @@ export const FACE_DESIGNER_PROVIDERS: Record<FaceDesignerProviderId, FaceDesigne
     id: 'avance',
     name: 'AVANCE公式フェイスデザイナー',
     nameEn: 'AVANCE Official Face Designer',
-    specialties: [],
-    philosophy: '',
+    tagline: 'アイゾーンの見せ方に哲学を持つブランド',
+    specialties: ['Eye zone', 'Portrait', 'Stage'],
+    philosophy: '目もとは、強調するのではなく、\n自然に視線を集める場所でありたい。',
   },
   shiseido: {
     id: 'shiseido',
