@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Chrome as Home, ScanFace, Activity, Brush, BookOpen, TrendingUp, Grid3x3, User, Users, X } from 'lucide-react';
 import type { UserLevel } from '@/types/userLevel';
-import { USER_LEVEL_LABELS } from '@/types/userLevel';
+import { USER_LEVEL_LABELS, USER_LEVEL_DESCRIPTIONS } from '@/types/userLevel';
 
 type Gender = 'female' | 'male';
 type NavId = 'home' | 'identity' | 'condition' | 'design' | 'karte' | 'insight';
@@ -85,19 +85,21 @@ export default function FaceOSNav({ active, onNavigate, gender, onGenderChange, 
         </div>
 
         <div className="mt-4 pt-4 border-t border-stone-200/60">
-          <p className="text-[10px] font-semibold text-stone-400 tracking-widest uppercase px-4 mb-2">レベル</p>
-          <div className="flex flex-col gap-1 mx-4">
+          <p className="text-[10px] font-semibold text-stone-400 tracking-widest uppercase px-4 mb-1">レベル</p>
+          <p className="text-[10px] text-stone-400 px-4 mb-2">近い状況を選んでください</p>
+          <div className="flex flex-col gap-1.5 mx-4">
             {(Object.keys(USER_LEVEL_LABELS) as UserLevel[]).map((l) => (
               <button
                 key={l}
                 onClick={() => onLevelChange(l)}
-                className={`text-left px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200 border ${
+                className={`text-left px-3 py-2 rounded-lg transition-all duration-200 border ${
                   level === l
                     ? 'bg-amber-500 border-amber-500 text-white'
                     : 'bg-white border-stone-200 text-stone-500 hover:border-amber-200 hover:text-stone-700'
                 }`}
               >
-                {USER_LEVEL_LABELS[l]}
+                <span className="block text-[11px] font-bold tracking-wide">{USER_LEVEL_LABELS[l]}</span>
+                <span className={`block text-[9px] leading-relaxed mt-0.5 ${level === l ? 'text-white/70' : 'text-stone-400'}`}>{USER_LEVEL_DESCRIPTIONS[l]}</span>
               </button>
             ))}
           </div>
