@@ -20,7 +20,6 @@ import { ensureAnonymousSession, getSupabaseClient } from '@/lib/supabaseClient'
 
 export function saveFaceKarteRecord(record: FaceKarteRecord): void {
   const records = getFaceKarteRecords();
-  // Replace if same id exists, otherwise prepend
   const idx = records.findIndex(r => r.id === record.id);
   if (idx >= 0) {
     records[idx] = record;
@@ -32,26 +31,26 @@ export function saveFaceKarteRecord(record: FaceKarteRecord): void {
     window.dispatchEvent(new Event('face-karte-updated'));
   }
 
-  // 端末内保存（上記）はこれまで通り同期・即時。
-  // Supabaseへのミラー保存はベストエフォートの非同期処理で、失敗してもUIには影響しない。
   void mirrorToSupabase(record);
 }
 
 async function mirrorToSupabase(record: FaceKarteRecord): Promise<void> {
+  console.log('[supabase] mirrorToSupabase 開始:', record.id);
   const supabase = getSupabaseClient();
-  if (!supabase) return; // Supabase未設定の環境では何もしない
+  if (!supabase) return;
 
   try {
     const userId = await ensureAnonymousSession();
-    if (!userId) return;
+    if (!userId) {
+      console.warn('[supabase] user idが取得できなかったため中央保存を中止します');
+      return;
+    }
 
     const { imageSrc: _imageSrc, guide, analysis, diagnosisSummary, strengths, goldenRatio,
       triangleAnalysis, makeupPlan, beforeAfter, faceYogaPlan, faceYogaSkipped,
       purpose, scene, level, styleId, providerId, note, ...rest } = record;
 
-    // imageSrcはbase64のため、そのままでは送らない（Concept Book「画像保存は本人が選択」）。
-    // Storageアップロード込みの実装は別途。ここではimage_urlは常にnullで登録する。
-    await supabase.from('face_karte_records').upsert({
+    const { error } = await supabase.from('face_karte_records').upsert({
       id: rest.id,
       user_id: userId,
       date: rest.date,
@@ -74,8 +73,13 @@ async function mirrorToSupabase(record: FaceKarteRecord): Promise<void> {
       provider_id: providerId ?? null,
       note: note ?? null,
     });
+
+    if (error) {
+      console.error('[supabase] karte mirror write returned an error:', error.message, error);
+      return;
+    }
+    console.log('[supabase] karte mirror write 成功:', record.id);
   } catch (err) {
-    // ベストエフォートなので、失敗してもコンソールに残すだけでUIは止めない。
     console.warn('[supabase] karte mirror write failed:', err);
   }
 }
@@ -110,12 +114,10 @@ export function hasTodayRecord(type: KarteRecordType): boolean {
 // ─── Supabase stubs (future) ──────────────────────────────────────────────────
 
 export async function saveToSupabase(_record: FaceKarteRecord): Promise<void> {
-  // TODO: implement when auth is added
   console.warn('saveToSupabase: not yet implemented');
 }
 
 export async function getRecordsFromSupabase(_userId: string): Promise<FaceKarteRecord[]> {
-  // TODO: implement when auth is added
   console.warn('getRecordsFromSupabase: not yet implemented');
   return [];
 }
