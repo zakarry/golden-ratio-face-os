@@ -115,17 +115,18 @@ function Dashboard() {
 /** 一覧と撮影ごとの記録を Excel で保存 */
 function ExcelButton({ list }: { list: ParticipantSummary[] }) {
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-  const run = async () => {
-    setBusy(true); setErr('');
-    try { await downloadStaffExcel(list, window.location.origin); }
-    catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+  const [msg, setMsg] = useState('');
+  const run = async (withImages: boolean) => {
+    setBusy(true); setMsg(withImages ? '画像を準備中…' : '作成中…');
+    try { await downloadStaffExcel(list, window.location.origin, { withImages, onProgress: setMsg }); setMsg(''); }
+    catch (e) { setMsg(`作成できませんでした（${e instanceof Error ? e.message : String(e)}）`); }
     setBusy(false);
   };
   return (
     <>
-      <button type="button" onClick={run} disabled={busy} className={ghostBtn}><FileSpreadsheet className="w-3.5 h-3.5" /> {busy ? '作成中…' : 'Excelで保存'}</button>
-      {err && <span className="text-xs text-rose-700">{err}</span>}
+      <button type="button" onClick={() => run(true)} disabled={busy} className={ghostBtn}><FileSpreadsheet className="w-3.5 h-3.5" /> Excelで保存（写真つき）</button>
+      <button type="button" onClick={() => run(false)} disabled={busy} className={ghostBtn}><FileSpreadsheet className="w-3.5 h-3.5" /> 数値のみ</button>
+      {msg && <span className="text-xs text-stone-600">{msg}</span>}
     </>
   );
 }
