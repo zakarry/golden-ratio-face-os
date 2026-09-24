@@ -5,8 +5,15 @@
 // 「メイク前（素顔）」→ 処方 → メイク → 「メイク後」の順に撮って保存する。
 // トークンが唯一の鍵。他の人の記録や写真は、読むことも上書きすることもできない。
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Camera, CheckCircle2, AlertTriangle, RefreshCw, Copy, Save, ClipboardList, Database, Lock, ImageIcon } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Camera, CheckCircle2, AlertTriangle, RefreshCw, Copy, Save, ClipboardList, Database, Lock, ImageIcon, Download } from 'lucide-react';
+import BlueprintCanvas from '@/components/BlueprintCanvas';
+import StrengthsPanel from '@/components/StrengthsPanel';
+import TriangleTypeCard from '@/components/TriangleTypeCard';
+import GoldenRatioPanel from '@/components/GoldenRatioPanel';
+import { analyzeFaceFromGuide } from '@/lib/analyzeFaceMock';
+import { buildKarteRecord, saveFaceKarteRecord } from '@/lib/karteStorage';
+import { renderBlueprintJpeg } from '@/lib/pilot/blueprintImage';
 import { detectFaceLandmarks, type DetectedGuide } from '@/lib/faceLandmarks';
 import { computePilotMetrics, buildTargetCard, formatMetric, type TargetCard, type PilotMetrics } from '@/lib/pilot/targetCard';
 import { buildPrescription, prescriptionToText, STRENGTH_LABEL, type Prescription, type Strength } from '@/lib/pilot/prescription';
@@ -112,7 +119,6 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
   const choosePhase = useCallback((p: PilotPhase) => { setPhaseTouched(true); setPhase(p); }, []);
 
   // ── 撮影・解析
-  const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [detect, setDetect]     = useState<DetectState>('idle');
   const [guide, setGuide]       = useState<DetectedGuide | null>(null);
   const [imgSize, setImgSize]   = useState<{ w: number; h: number } | null>(null);
@@ -123,9 +129,13 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
   const metrics: PilotMetrics | null = useMemo(() => (guide && imgSize) ? computePilotMetrics(guide, imgSize.w, imgSize.h) : null, [guide, imgSize]);
   const card: TargetCard | null = useMemo(() => (metrics && guide && imgSize) ? buildTargetCard(metrics, guide, imgSize.w, imgSize.h, { irisDiameterPx: guide.irisDiameterPx ?? null }) : null, [metrics, guide, imgSize]);
   const rx: Prescription | null = useMemo(() => card ? buildPrescription(card, strength) : null, [card, strength]);
+  // 顔カルテ（「あなたの顔の設計図」と同じ解析）
+  const analysis = useMemo(() => guide ? analyzeFaceFromGuide(guide) : null, [guide]);
+  const blueprintRef = useRef<HTMLDivElement>(null);
+  const [blueprintUrl, setBlueprintUrl] = useState<string | null>(null);
 
   const handleImage = useCallback(async (url: string) => {
-    setImageSrc(url); setGuide(null); setFraming(null); setDetect('detecting');
+    setGuide(null); setFraming(null); setBlueprintUrl(null); setDetect('detecting');
     try {
       const { dataUrl: du, w, h } = await toDataUrl(url);
       setDataUrl(du); setImgSize({ w, h });
@@ -136,7 +146,7 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
   }, []);
 
   const reset = useCallback(() => {
-    setImageSrc(null); setGuide(null); setDataUrl(null); setImgSize(null); setFraming(null); setDetect('idle'); setSaveState('idle'); setSaveMsg('');
+    setGuide(null); setDataUrl(null); setBlueprintUrl(null); setImgSize(null); setFraming(null); setDetect('idle'); setSaveState('idle'); setSaveMsg('');
   }, []);
 
   // ── 保存
@@ -144,13 +154,23 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
   const [saveMsg, setSaveMsg]     = useState('');
 
   const handleSave = useCallback(async () => {
-    if (!guide || !metrics || !card || !rx || !imgSize || !dataUrl || !framing) return;
+    if (!guide || !metrics || !card || !rx || !imgSize || !dataUrl || !framing || !analysis) return;
     if (!consentOk) { setSaveMsg('上の「同意」をすべて入力してください'); return; }
     setPhaseTouched(true); setSaveState('saving'); setSaveMsg('');
+    // 顔の設計図を画像にし、顔カルテを作る（カルテはこの端末の「顔カルテ」にも残す）
+    const blueprint = await renderBlueprintJpeg(blueprintRef.current, dataUrl);
+    setBlueprintUrl(blueprint);
+    const karteFull = buildKarteRecord(phase === 'before' ? 'baseline' : 'dailyMakeup', analysis, {
+      guide, note: `ミス・ワールドJAPAN パイロット ${info.subjectCode}（${phase === 'before' ? 'メイク前' : 'メイク後'}）`,
+    });
+    try { saveFaceKarteRecord({ ...karteFull, imageSrc: dataUrl }); }
+    catch { try { saveFaceKarteRecord(karteFull); } catch { /* 端末の容量不足。サーバーには送る */ } }
+    const karte = { ...karteFull }; delete karte.imageSrc; // 写真は storage 側にある
     const rec: PilotRecord = {
       id: newPilotId(info.subjectCode, phase), token, subjectCode: info.subjectCode, phase, takenAt: new Date().toISOString(), event: info.event,
       consent: true, isMinor: minor, guardianName: minor ? consent.guardianName.trim() : undefined,
       imageDataUrl: dataUrl, imageWidth: imgSize.w, imageHeight: imgSize.h, guide, metrics, targetCard: card, prescription: rx, framing,
+      blueprintDataUrl: blueprint ?? undefined, karte,
       appVersion: PILOT_APP_VERSION, syncState: 'local',
     };
     upsertLocal(rec);
@@ -158,7 +178,7 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
     upsertLocal(synced);
     if (synced.syncState === 'synced') { setSaveState('saved'); setSaveMsg('送信しました'); onReload(); }
     else { setSaveState('error'); setSaveMsg(`この端末には保存しました。送信は失敗しました（${synced.syncError}）。電波の良い場所で下の「再送」を押してください`); }
-  }, [guide, metrics, card, rx, imgSize, dataUrl, framing, consentOk, info, phase, token, minor, consent.guardianName, onReload]);
+  }, [guide, metrics, card, rx, imgSize, dataUrl, framing, analysis, consentOk, info, phase, token, minor, consent.guardianName, onReload]);
 
   const rxText = useMemo(() => (card && rx) ? prescriptionToText(info.subjectCode, card, rx) : '', [card, rx, info.subjectCode]);
   const copyRx = useCallback(async () => { try { await navigator.clipboard.writeText(rxText); setSaveMsg('処方をコピーしました'); } catch { setSaveMsg('コピーできませんでした'); } }, [rxText]);
@@ -271,8 +291,28 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
                 <p className="text-[11px] text-stone-500">できれば撮り直してください。このまま送ることもできます。</p>
               </>
             )}
-            {imageSrc && <img src={imageSrc} alt="" className="w-40 rounded-lg border border-stone-200" />}
           </Card>
+
+          {/* 顔の設計図（黄金比）＋ 顔カルテ */}
+          {dataUrl && analysis && (
+            <Card>
+              <p className="text-sm font-semibold text-stone-800">あなたの顔の設計図　<span className="text-xs font-normal text-stone-500">{phaseLabel}</span></p>
+              <div ref={blueprintRef} className="flex justify-center rounded-xl overflow-hidden bg-stone-50 border border-stone-100">
+                <BlueprintCanvas imageSrc={dataUrl} guide={guide} triangleAnalysis={analysis.triangleAnalysis} />
+              </div>
+              <p className="text-[11px] text-stone-400 leading-relaxed">評価ではなく、顔の構造を知るためのカルテです。黄金比は美しさの点数ではなく、構造を理解するための参考値です。</p>
+              {phase === 'before' && (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-stone-500">① あなたの強み</p>
+                  <StrengthsPanel strengths={analysis.strengths} />
+                  <p className="text-xs font-semibold text-stone-500">② 顔印象タイプ</p>
+                  <TriangleTypeCard ta={analysis.triangleAnalysis} />
+                  <p className="text-xs font-semibold text-stone-500">③ 黄金比参考値</p>
+                  <GoldenRatioPanel gr={analysis.goldenRatio} />
+                </div>
+              )}
+            </Card>
+          )}
 
           {phase === 'before' && (
             <Card>
@@ -310,6 +350,9 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
               </button>
               {saveMsg && <span className={`text-xs ${saveState === 'error' ? 'text-rose-700' : 'text-stone-600'}`}>{saveMsg}</span>}
             </div>
+            {blueprintUrl && saveState !== 'saving' && (
+              <a href={blueprintUrl} download={`face-blueprint_${info.subjectCode}_${phase}.jpg`} className={ghostBtn}><Download className="w-3.5 h-3.5" /> 顔の設計図を画像で保存</a>
+            )}
             {saveState === 'saved' && phase === 'before' && (
               <div className="rounded-xl bg-stone-50 border border-stone-200 p-3 space-y-2 text-xs text-stone-700">
                 <p>次は、上の処方を参考にメイクをしてから「メイク後」を撮ってください。同じ場所・同じ明かりで撮ると、比べやすくなります。</p>

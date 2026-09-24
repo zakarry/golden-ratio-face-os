@@ -7,6 +7,7 @@ import { ensureAnonymousSession, getSupabaseClient } from '@/lib/supabaseClient'
 import type { DetectedGuide } from '@/lib/faceLandmarks';
 import type { PilotMetrics, TargetCard } from './targetCard';
 import type { Prescription } from './prescription';
+import type { FaceKarteRecord } from '@/types/karte';
 
 export type PilotPhase = 'before' | 'after';
 
@@ -33,6 +34,10 @@ export interface PilotRecord {
   guardianName?: string;
   imageDataUrl?: string;      // 端末保存のみ（Supabase には storage 経由）
   imagePath?: string;         // storage 上のパス
+  blueprintDataUrl?: string;  // 顔の設計図（写真＋黄金比の線）。送信後は端末から消す
+  blueprintPath?: string;
+  /** 顔カルテ（強み・顔印象タイプ・黄金比参考値など。画像は含めない） */
+  karte?: Omit<FaceKarteRecord, 'imageSrc'>;
   imageWidth: number;
   imageHeight: number;
   guide: DetectedGuide;
@@ -63,7 +68,7 @@ function writeLocal(records: PilotRecord[]) {
     localStorage.setItem(LS_KEY, JSON.stringify(records));
   } catch {
     // 画像で容量を超えた場合は画像を落として再保存
-    const slim = records.map(r => ({ ...r, imageDataUrl: undefined }));
+    const slim = records.map(r => ({ ...r, imageDataUrl: undefined, blueprintDataUrl: undefined }));
     try { localStorage.setItem(LS_KEY, JSON.stringify(slim)); } catch { /* give up */ }
   }
   window.dispatchEvent(new Event('face-os-pilot-updated'));
@@ -140,13 +145,22 @@ export async function syncPilotRecord(record: PilotRecord): Promise<PilotRecord>
     const userId = await ensureAnonymousSession();
     if (!userId) return { ...record, syncState: 'error', syncError: '匿名セッションを取得できません' };
 
-    // 写真はトークン名のフォルダへ「追加」だけ（上書き・閲覧は不可）
+    // 写真と設計図はトークン名のフォルダへ「追加」だけ（上書き・閲覧は不可）
+    const upload = async (dataUrl: string, path: string) => {
+      const blob = dataUrlToBlob(dataUrl);
+      const { error: upErr } = await supabase.storage.from('pilot-photos').upload(path, blob, { contentType: blob.type, upsert: false });
+      // 再送時は前回アップロード済みのことがある
+      return upErr && !/exist|duplicate/i.test(upErr.message) ? upErr.message : null;
+    };
     const imagePath = record.imageDataUrl ? `${record.token}/${record.phase}_${record.id}.jpg` : record.imagePath;
     if (record.imageDataUrl && imagePath) {
-      const blob = dataUrlToBlob(record.imageDataUrl);
-      const { error: upErr } = await supabase.storage.from('pilot-photos').upload(imagePath, blob, { contentType: blob.type, upsert: false });
-      // 再送時は前回アップロード済みのことがある
-      if (upErr && !/exist|duplicate/i.test(upErr.message)) return { ...record, syncState: 'error', syncError: `写真の保存に失敗: ${upErr.message}` };
+      const err = await upload(record.imageDataUrl, imagePath);
+      if (err) return { ...record, syncState: 'error', syncError: `写真の保存に失敗: ${err}` };
+    }
+    const blueprintPath = record.blueprintDataUrl ? `${record.token}/${record.phase}_${record.id}_blueprint.jpg` : record.blueprintPath;
+    if (record.blueprintDataUrl && blueprintPath) {
+      const err = await upload(record.blueprintDataUrl, blueprintPath);
+      if (err) return { ...record, syncState: 'error', syncError: `設計図の保存に失敗: ${err}` };
     }
 
     const { error } = await supabase.rpc('pilot_submit', {
@@ -159,6 +173,8 @@ export async function syncPilotRecord(record: PilotRecord): Promise<PilotRecord>
         is_minor: record.isMinor,
         guardian_name: record.guardianName ?? null,
         image_path: imagePath ?? null,
+        blueprint_path: blueprintPath ?? null,
+        karte: record.karte ?? null,
         image_width: record.imageWidth,
         image_height: record.imageHeight,
         guide: record.guide,
@@ -170,8 +186,9 @@ export async function syncPilotRecord(record: PilotRecord): Promise<PilotRecord>
         app_version: record.appVersion,
       },
     });
-    if (error) return { ...record, imagePath, syncState: 'error', syncError: error.message };
-    return { ...record, imagePath, syncState: 'synced', syncError: undefined };
+    if (error) return { ...record, imagePath, blueprintPath, syncState: 'error', syncError: error.message };
+    // 送れたら端末の画像は消して容量を空ける（顔カルテ側に写真の控えがある）
+    return { ...record, imagePath, blueprintPath, imageDataUrl: undefined, blueprintDataUrl: undefined, syncState: 'synced', syncError: undefined };
   } catch (e) {
     return { ...record, syncState: 'error', syncError: e instanceof Error ? e.message : String(e) };
   }
