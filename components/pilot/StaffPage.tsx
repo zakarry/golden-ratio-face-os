@@ -4,7 +4,8 @@
 // 許可されたメールでログイン → 参加者の一覧 → 1人ずつの経過（写真・設計図・顔カルテ・処方・ずれの推移）
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, Copy, LogOut, Mail, RefreshCw, Users } from 'lucide-react';
+import { ArrowLeft, Copy, FileSpreadsheet, LogOut, Mail, RefreshCw, Users } from 'lucide-react';
+import { downloadStaffExcel } from '@/lib/pilot/staffExport';
 import {
   getParticipantHistory, getStaffState, listParticipants, sendStaffLoginLink, staffMediaUrls, staffSignOut,
   type ParticipantSummary, type StaffState,
@@ -82,7 +83,10 @@ function Dashboard() {
     <Card>
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-sm font-semibold text-stone-800 flex items-center gap-2"><Users className="w-4 h-4" /> 参加者 {total}名　<span className="text-xs font-normal text-stone-500">撮影あり {started}名・未撮影 {total - started}名</span></p>
-        <button type="button" onClick={load} className={ghostBtn}><RefreshCw className="w-3.5 h-3.5" /> 更新</button>
+        <div className="flex items-center gap-2">
+          {list && <ExcelButton list={list} />}
+          <button type="button" onClick={load} className={ghostBtn}><RefreshCw className="w-3.5 h-3.5" /> 更新</button>
+        </div>
       </div>
       {error && <p className="text-xs text-rose-700">{error}</p>}
       {!list && !error && <p className="text-xs text-stone-400">読み込んでいます…</p>}
@@ -105,6 +109,24 @@ function Dashboard() {
         </div>
       )}
     </Card>
+  );
+}
+
+/** 一覧と撮影ごとの記録を Excel で保存 */
+function ExcelButton({ list }: { list: ParticipantSummary[] }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const run = async () => {
+    setBusy(true); setErr('');
+    try { await downloadStaffExcel(list, window.location.origin); }
+    catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    setBusy(false);
+  };
+  return (
+    <>
+      <button type="button" onClick={run} disabled={busy} className={ghostBtn}><FileSpreadsheet className="w-3.5 h-3.5" /> {busy ? '作成中…' : 'Excelで保存'}</button>
+      {err && <span className="text-xs text-rose-700">{err}</span>}
+    </>
   );
 }
 
