@@ -1,6 +1,7 @@
 // パイロット記録の保存
 // 端末（localStorage）に必ず保存し、Supabase（pilot_records + storage: pilot-photos）に写す。
 // 写真は後日の照合に必要なので、パイロットでは画像も保存する（本人同意のうえ）。
+// 参加者は専用URLのトークンだけを持つ。書き込みは pilot_submit、読み出しは pilot_lookup（本人分のみ）。
 
 import { ensureAnonymousSession, getSupabaseClient } from '@/lib/supabaseClient';
 import type { DetectedGuide } from '@/lib/faceLandmarks';
@@ -22,12 +23,14 @@ export interface FramingCheck {
 
 export interface PilotRecord {
   id: string;
+  token: string;
   subjectCode: string;
   phase: PilotPhase;
   takenAt: string;
   event: string;
-  operator: string;
   consent: boolean;
+  isMinor: boolean;
+  guardianName?: string;
   imageDataUrl?: string;      // 端末保存のみ（Supabase には storage 経由）
   imagePath?: string;         // storage 上のパス
   imageWidth: number;
@@ -43,12 +46,16 @@ export interface PilotRecord {
   syncError?: string;
 }
 
-const LS_KEY = 'face_os_pilot_records_v1';
-export const PILOT_APP_VERSION = 'pilot-2026-09-27';
+const LS_KEY = 'face_os_pilot_records_v2';
+export const PILOT_APP_VERSION = 'pilot-self-2026-09-24';
 
-export function getPilotRecords(): PilotRecord[] {
+export function getPilotRecords(token?: string): PilotRecord[] {
   if (typeof window === 'undefined') return [];
-  try { const raw = localStorage.getItem(LS_KEY); const a = raw ? JSON.parse(raw) : []; return Array.isArray(a) ? a : []; } catch { return []; }
+  try {
+    const raw = localStorage.getItem(LS_KEY); const a = raw ? JSON.parse(raw) : [];
+    const all: PilotRecord[] = Array.isArray(a) ? a : [];
+    return token ? all.filter(r => r.token === token) : all;
+  } catch { return []; }
 }
 
 function writeLocal(records: PilotRecord[]) {
@@ -69,14 +76,52 @@ export function upsertLocal(record: PilotRecord) {
   writeLocal(all);
 }
 
-export function findLocalBefore(subjectCode: string): PilotRecord | null {
-  return getPilotRecords().find(r => r.subjectCode === subjectCode && r.phase === 'before') ?? null;
+export function findLocalBefore(token: string): PilotRecord | null {
+  return getPilotRecords(token).find(r => r.phase === 'before') ?? null;
 }
 
 export function newPilotId(subjectCode: string, phase: PilotPhase) {
   const d = new Date();
   const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}_${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
-  return `pilot_${subjectCode}_${phase}_${stamp}_${Math.random().toString(36).slice(2, 6)}`;
+  const rand = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 10);
+  return `pilot_${subjectCode}_${phase}_${stamp}_${rand}`;
+}
+
+/** 専用URLのトークン（?p=）。一度開けば端末に記憶し、次回は普通のURLからでも続きができる */
+const TOKEN_KEY = 'face_os_pilot_token_v1';
+export function readPilotToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  const fromUrl = new URLSearchParams(window.location.search).get('p');
+  if (fromUrl) { try { localStorage.setItem(TOKEN_KEY, fromUrl.trim()); } catch { /* noop */ } return fromUrl.trim(); }
+  try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
+}
+export function forgetPilotToken() { try { localStorage.removeItem(TOKEN_KEY); } catch { /* noop */ } }
+export function savePilotToken(token: string) { try { localStorage.setItem(TOKEN_KEY, token.trim()); } catch { /* noop */ } }
+
+export interface ParticipantInfo {
+  subjectCode: string;
+  event: string;
+  /** 運営が登録した未成年フラグ（未登録なら null） */
+  isMinor: boolean | null;
+  before: { takenAt: string; metrics: PilotMetrics } | null;
+  hasAfter: boolean;
+}
+
+/** トークンの持ち主の情報。無効なら null、通信できなければ 'offline' */
+export async function lookupParticipant(token: string): Promise<ParticipantInfo | null | 'offline'> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return 'offline';
+  try {
+    if (!(await ensureAnonymousSession())) return 'offline';
+    const { data, error } = await supabase.rpc('pilot_lookup', { p_token: token });
+    if (error) return 'offline';
+    if (!data) return null;
+    return {
+      subjectCode: data.subject_code, event: data.event, isMinor: data.is_minor ?? null,
+      before: data.before ? { takenAt: data.before.taken_at, metrics: data.before.metrics } : null,
+      hasAfter: !!data.has_after,
+    };
+  } catch { return 'offline'; }
 }
 
 function dataUrlToBlob(dataUrl: string): Blob {
@@ -95,34 +140,35 @@ export async function syncPilotRecord(record: PilotRecord): Promise<PilotRecord>
     const userId = await ensureAnonymousSession();
     if (!userId) return { ...record, syncState: 'error', syncError: '匿名セッションを取得できません' };
 
-    let imagePath = record.imagePath;
-    if (!imagePath && record.imageDataUrl) {
+    // 写真はトークン名のフォルダへ「追加」だけ（上書き・閲覧は不可）
+    const imagePath = record.imageDataUrl ? `${record.token}/${record.phase}_${record.id}.jpg` : record.imagePath;
+    if (record.imageDataUrl && imagePath) {
       const blob = dataUrlToBlob(record.imageDataUrl);
-      const ext = blob.type === 'image/png' ? 'png' : 'jpg';
-      imagePath = `${record.event}/${record.subjectCode}/${record.phase}_${record.id}.${ext}`;
-      const { error: upErr } = await supabase.storage.from('pilot-photos').upload(imagePath, blob, { contentType: blob.type, upsert: true });
-      if (upErr) return { ...record, syncState: 'error', syncError: `写真の保存に失敗: ${upErr.message}` };
+      const { error: upErr } = await supabase.storage.from('pilot-photos').upload(imagePath, blob, { contentType: blob.type, upsert: false });
+      // 再送時は前回アップロード済みのことがある
+      if (upErr && !/exist|duplicate/i.test(upErr.message)) return { ...record, syncState: 'error', syncError: `写真の保存に失敗: ${upErr.message}` };
     }
 
-    const { error } = await supabase.from('pilot_records').upsert({
-      id: record.id,
-      user_id: userId,
-      subject_code: record.subjectCode,
-      phase: record.phase,
-      taken_at: record.takenAt,
-      event: record.event,
-      operator: record.operator || null,
-      consent: record.consent,
-      image_path: imagePath ?? null,
-      image_width: record.imageWidth,
-      image_height: record.imageHeight,
-      guide: record.guide,
-      metrics: record.metrics,
-      target_card: record.targetCard,
-      prescription: record.prescription,
-      framing: record.framing,
-      note: record.note ?? null,
-      app_version: record.appVersion,
+    const { error } = await supabase.rpc('pilot_submit', {
+      p_token: record.token,
+      p_record: {
+        id: record.id,
+        phase: record.phase,
+        taken_at: record.takenAt,
+        consent: record.consent,
+        is_minor: record.isMinor,
+        guardian_name: record.guardianName ?? null,
+        image_path: imagePath ?? null,
+        image_width: record.imageWidth,
+        image_height: record.imageHeight,
+        guide: record.guide,
+        metrics: record.metrics,
+        target_card: record.targetCard,
+        prescription: record.prescription,
+        framing: record.framing,
+        note: record.note ?? null,
+        app_version: record.appVersion,
+      },
     });
     if (error) return { ...record, imagePath, syncState: 'error', syncError: error.message };
     return { ...record, imagePath, syncState: 'synced', syncError: undefined };
@@ -131,29 +177,9 @@ export async function syncPilotRecord(record: PilotRecord): Promise<PilotRecord>
   }
 }
 
-/** 同じ subject_code の「前」を Supabase から探す（他端末で撮った分も拾う） */
-export async function fetchBeforeFromSupabase(subjectCode: string, event: string): Promise<PilotRecord | null> {
-  const supabase = getSupabaseClient();
-  if (!supabase) return null;
-  try {
-    await ensureAnonymousSession();
-    const { data, error } = await supabase.from('pilot_records')
-      .select('*').eq('subject_code', subjectCode).eq('event', event).eq('phase', 'before')
-      .order('taken_at', { ascending: false }).limit(1);
-    if (error || !data || data.length === 0) return null;
-    const r = data[0];
-    return {
-      id: r.id, subjectCode: r.subject_code, phase: r.phase, takenAt: r.taken_at, event: r.event, operator: r.operator ?? '',
-      consent: !!r.consent, imagePath: r.image_path ?? undefined, imageWidth: r.image_width, imageHeight: r.image_height,
-      guide: r.guide, metrics: r.metrics, targetCard: r.target_card, prescription: r.prescription, framing: r.framing,
-      note: r.note ?? undefined, appVersion: r.app_version ?? '', syncState: 'synced',
-    };
-  } catch { return null; }
-}
-
 /** 未同期の記録をまとめて再送 */
-export async function resyncPending(): Promise<{ ok: number; ng: number }> {
-  const all = getPilotRecords();
+export async function resyncPending(token: string): Promise<{ ok: number; ng: number }> {
+  const all = getPilotRecords(token);
   let ok = 0, ng = 0;
   for (const r of all) {
     if (r.syncState === 'synced') continue;

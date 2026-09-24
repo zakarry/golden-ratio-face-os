@@ -12,7 +12,7 @@
 //   Consumed by brand programs, research, education, and future collaborations.
 //   See types/karte.ts for full domain model.
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ScanFace } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
@@ -44,7 +44,29 @@ export default function Home() {
   const [gender, setGender]       = useState<Gender>('female');
   const [level, setLevel]         = useState<UserLevel>('advanced');
 
+  // 参加者の専用リンク（?p=）はパイロットだけを表示する
+  const [participantMode, setParticipantMode] = useState(false);
+  useEffect(() => { if (new URLSearchParams(window.location.search).has('p')) setParticipantMode(true); }, []);
+
   const isMale = gender === 'male';
+
+  if (participantMode) {
+    return (
+      <div className="min-h-screen bg-[#F7F1E8]">
+        <header className="border-b border-stone-200/60 bg-white/90 backdrop-blur-sm">
+          <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full flex items-center justify-center bg-gradient-to-br from-champagne/50 to-amber-100/60">
+              <ScanFace className="w-5 h-5 text-gold" strokeWidth={1.5} />
+            </div>
+            <h1 className="text-sm font-semibold text-stone-900 tracking-tight">黄金比 Face OS</h1>
+          </div>
+        </header>
+        <main className="max-w-2xl mx-auto px-4 py-6">
+          <PilotPage />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen transition-colors duration-300 ${isMale ? 'bg-[#F0EDE8]' : 'bg-[#F7F1E8]'}`}>

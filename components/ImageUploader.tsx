@@ -6,11 +6,13 @@ import CameraCapture from './CameraCapture';
 
 interface ImageUploaderProps {
   onImageSelected: (url: string) => void;
+  /** 下部の注記を差し替える（写真を保存する画面では既定の「保存されません」を出さない） */
+  privacyNote?: string;
 }
 
 type Mode = 'choose' | 'camera';
 
-export default function ImageUploader({ onImageSelected }: ImageUploaderProps) {
+export default function ImageUploader({ onImageSelected, privacyNote }: ImageUploaderProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [mode, setMode] = useState<Mode>('choose');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -136,7 +138,7 @@ export default function ImageUploader({ onImageSelected }: ImageUploaderProps) {
       <div className="flex items-center justify-center gap-1.5">
         <Lock className="w-3 h-3 text-stone-300" />
         <span className="text-[10px] text-stone-300">
-          画像はデバイス上のみで処理され、一切保存されません
+          {privacyNote ?? '画像はデバイス上のみで処理され、一切保存されません'}
         </span>
         <ImageIcon className="w-3 h-3 text-stone-300" />
       </div>
