@@ -24,8 +24,9 @@ const TabDiagnosis   = dynamic(() => import('@/components/karte/TabDiagnosis'), 
 const FaceConditionPage = dynamic(() => import('@/components/karte/FaceConditionPage'), { ssr: false });
 const TabDailyMakeup = dynamic(() => import('@/components/karte/TabDailyMakeup'), { ssr: false });
 const TabHistory     = dynamic(() => import('@/components/karte/TabHistory'),     { ssr: false });
+const PilotPage      = dynamic(() => import('@/components/pilot/PilotPage'),       { ssr: false });
 
-type NavId = 'home' | 'identity' | 'condition' | 'design' | 'karte' | 'insight';
+type NavId = 'home' | 'identity' | 'condition' | 'design' | 'karte' | 'insight' | 'pilot';
 type Gender = 'female' | 'male';
 
 const NAV_LABELS: Record<NavId, string> = {
@@ -35,6 +36,7 @@ const NAV_LABELS: Record<NavId, string> = {
   design:    '今日のメイクの目的は？',
   karte:     '顔カルテ',
   insight:   '顔インサイト',
+  pilot:     'ミス・ワールド パイロット',
 };
 
 export default function Home() {
@@ -107,6 +109,10 @@ export default function Home() {
 
           {activeNav === 'insight' && (
             <InsightPlaceholder isMale={isMale} />
+          )}
+
+          {activeNav === 'pilot' && (
+            <PilotPage />
           )}
         </main>
       </div>

@@ -28,6 +28,15 @@ export interface DetectedGuide {
   // Mouth center
   mouthCenterX: number;
   mouthCenterY: number;
+  // ── Pilot extensions (optional; older records may not have them) ──
+  // Eye corner Y (for eye angle), iris diameter in px (for mm scale)
+  leftEyeOuterY?: number;
+  leftEyeInnerY?: number;
+  rightEyeInnerY?: number;
+  rightEyeOuterY?: number;
+  irisDiameterPx?: number;
+  imageWidth?: number;
+  imageHeight?: number;
 }
 
 // ─── Landmark index sets ─────────────────────────────────────────────────────
@@ -167,6 +176,10 @@ export async function detectFaceLandmarks(
   const hasIris = lm.length > 477;
   const leftPupil  = hasIris ? avg(pick(lm, LEFT_IRIS_IDX))  : leftEyeCenter;
   const rightPupil = hasIris ? avg(pick(lm, RIGHT_IRIS_IDX)) : rightEyeCenter;
+  // Iris diameter in px (horizontal ring points 469/471 and 474/476), averaged
+  const irisDiameterPx = hasIris
+    ? ((Math.abs(lm[469].x - lm[471].x) + Math.abs(lm[474].x - lm[476].x)) / 2) * canvas.width
+    : undefined;
 
   // Stable mouth center: blend of lm[13/14] midpoint and full ring avg
   const stableMouthCenter = avg([mouthCenter, mouthRingCenter]);
@@ -207,5 +220,12 @@ export async function detectFaceLandmarks(
     rightPupilY:     rightPupil.y,
     mouthCenterX:    stableMouthCenter.x,
     mouthCenterY:    stableMouthCenter.y,
+    leftEyeOuterY:   lm[33].y,
+    leftEyeInnerY:   lm[133].y,
+    rightEyeInnerY:  lm[362].y,
+    rightEyeOuterY:  lm[263].y,
+    irisDiameterPx,
+    imageWidth:      canvas.width,
+    imageHeight:     canvas.height,
   };
 }

@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Chrome as Home, ScanFace, Activity, Brush, BookOpen, TrendingUp, Grid3x3, User, Users, X } from 'lucide-react';
+import { Chrome as Home, ScanFace, Activity, Brush, BookOpen, TrendingUp, Grid3x3, User, Users, X, Crown } from 'lucide-react';
 import type { UserLevel } from '@/types/userLevel';
 import { USER_LEVEL_LABELS, USER_LEVEL_DESCRIPTIONS } from '@/types/userLevel';
 
 type Gender = 'female' | 'male';
-type NavId = 'home' | 'identity' | 'condition' | 'design' | 'karte' | 'insight';
+type NavId = 'home' | 'identity' | 'condition' | 'design' | 'karte' | 'insight' | 'pilot';
 
 interface FaceOSNavProps {
   active: NavId;
@@ -24,10 +24,11 @@ const NAV_ITEMS: Array<{ id: NavId; label: string; sublabel?: string; icon: Reac
   { id: 'design',    label: '今日のメイクの目的は？',     icon: <Brush className="w-4 h-4" /> },
   { id: 'karte',     label: '顔カルテ',                   icon: <BookOpen className="w-4 h-4" /> },
   { id: 'insight',   label: '顔インサイト',               icon: <TrendingUp className="w-4 h-4" /> },
+  { id: 'pilot',     label: 'ミス・ワールド パイロット', sublabel: '撮影・目標・処方・保存', icon: <Crown className="w-4 h-4" /> },
 ];
 
 const MOBILE_PRIMARY: NavId[] = ['home', 'identity', 'condition', 'design'];
-const MOBILE_MORE: NavId[] = ['karte', 'insight'];
+const MOBILE_MORE: NavId[] = ['karte', 'insight', 'pilot'];
 
 export default function FaceOSNav({ active, onNavigate, gender, onGenderChange, level, onLevelChange }: FaceOSNavProps) {
   const [moreOpen, setMoreOpen] = useState(false);
