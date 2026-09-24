@@ -1,8 +1,8 @@
 'use client';
 
-// ミス・ワールドJAPAN パイロット（本人撮影）
-// 運営から届いた専用URL（?p=<token>）で開き、自分のスマホで
-// 「メイク前（素顔）」→ 処方 → メイク → 「メイク後」の順に撮って保存する。
+// ミス・ワールドJAPAN パイロット（本人撮影・継続）
+// 運営から届いた専用URL（?p=<token>）で開き、期間中に何度でも（1人30枚まで）自分のスマホで撮る。
+// 撮るたびに メイク前／メイク後 を選び、その時点の顔で設計図・顔カルテ・処方を作って記録に貯める。
 // トークンが唯一の鍵。他の人の記録や写真は、読むことも上書きすることもできない。
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -18,9 +18,10 @@ import { detectFaceLandmarks, type DetectedGuide } from '@/lib/faceLandmarks';
 import { computePilotMetrics, buildTargetCard, formatMetric, type TargetCard, type PilotMetrics } from '@/lib/pilot/targetCard';
 import { buildPrescription, prescriptionToText, STRENGTH_LABEL, type Prescription, type Strength } from '@/lib/pilot/prescription';
 import {
-  checkFraming, forgetPilotToken, getPilotRecords, lookupParticipant, newPilotId, readPilotToken, resyncPending,
+  checkFraming, fetchOwnMediaUrls, forgetPilotToken, getPilotRecords, lookupParticipant, newPilotId, readPilotToken, recordConsent, resyncPending,
   savePilotToken, syncPilotRecord, upsertLocal, PILOT_APP_VERSION, type FramingCheck, type ParticipantInfo, type PilotPhase, type PilotRecord,
 } from '@/lib/pilot/pilotStorage';
+import PilotHistory, { RxList } from './PilotHistory';
 
 type DetectState = 'idle' | 'detecting' | 'done' | 'error';
 type Age = 'adult' | 'minor' | null;
@@ -28,14 +29,13 @@ type InfoState = { kind: 'loading' } | { kind: 'none' } | { kind: 'invalid' } | 
 
 interface ConsentState { age: Age; selfConsent: boolean; guardianName: string; guardianConsent: boolean }
 const EMPTY_CONSENT: ConsentState = { age: null, selfConsent: false, guardianName: '', guardianConsent: false };
-const consentKey = (token: string) => `face_os_pilot_consent_${token}`;
 
 async function toDataUrl(src: string, maxSide = 1600): Promise<{ dataUrl: string; w: number; h: number }> {
   const img = await new Promise<HTMLImageElement>((res, rej) => { const el = new Image(); el.onload = () => res(el); el.onerror = rej; el.src = src; });
   const s = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
   const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
   c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
-  return { dataUrl: c.toDataURL('image/jpeg', 0.9), w: c.width, h: c.height };
+  return { dataUrl: c.toDataURL('image/jpeg', 0.85), w: c.width, h: c.height };
 }
 
 /** 入力されたURLまたはコードからトークンを取り出す */
@@ -88,35 +88,36 @@ export default function PilotPage() {
 }
 
 function Session({ token, info, onReload, onSwitch }: { token: string; info: ParticipantInfo; onReload: () => void; onSwitch: () => void }) {
-  // ── 同意（端末に記憶して「後」で入れ直さなくてよいようにする）
+  // ── 同意（1人1回。サーバーに記録するので、次回以降や別の端末では聞かない）
   const [consent, setConsentState] = useState<ConsentState>(EMPTY_CONSENT);
-  useEffect(() => {
-    try { const o = JSON.parse(localStorage.getItem(consentKey(token)) || 'null'); if (o) setConsentState({ ...EMPTY_CONSENT, ...o }); } catch { /* noop */ }
-  }, [token]);
-  const setConsent = useCallback((patch: Partial<ConsentState>) => {
-    setConsentState(prev => { const next = { ...prev, ...patch }; try { localStorage.setItem(consentKey(token), JSON.stringify(next)); } catch { /* noop */ } return next; });
-  }, [token]);
-
+  const setConsent = useCallback((patch: Partial<ConsentState>) => setConsentState(prev => ({ ...prev, ...patch })), []);
   const forcedMinor = info.isMinor === true;
   const minor = forcedMinor || consent.age === 'minor';
-  const consentOk = (forcedMinor || consent.age !== null) && consent.selfConsent && (!minor || (consent.guardianConsent && consent.guardianName.trim().length > 0));
+  const formOk = (forcedMinor || consent.age !== null) && consent.selfConsent && (!minor || (consent.guardianConsent && consent.guardianName.trim().length > 0));
+  const consentOk = !!info.consentedAt;
+  const [consentMsg, setConsentMsg] = useState('');
+  const submitConsent = useCallback(async () => {
+    setConsentMsg('記録しています…');
+    const err = await recordConsent(token, minor, minor ? consent.guardianName.trim() : '');
+    if (err) { setConsentMsg(`記録できませんでした（${err}）。電波の良い場所でもう一度押してください`); return; }
+    setConsentMsg(''); onReload();
+  }, [token, minor, consent.guardianName, onReload]);
 
-  // ── 記録（この端末）
+  // ── 未送信の記録（この端末）
   const [records, setRecords] = useState<PilotRecord[]>([]);
   useEffect(() => {
     const loadLocal = () => setRecords(getPilotRecords(token));
     loadLocal(); window.addEventListener('face-os-pilot-updated', loadLocal);
     return () => window.removeEventListener('face-os-pilot-updated', loadLocal);
   }, [token]);
-  const localBefore = useMemo(() => records.find(r => r.phase === 'before') ?? null, [records]);
-  const hasBefore = !!info.before || !!localBefore;
-  const hasAfter = info.hasAfter || records.some(r => r.phase === 'after');
+  const pending = records.filter(r => r.syncState !== 'synced');
+  const used = info.count + pending.length;
+  const limitReached = used >= info.limit;
 
-  // 開いたときだけ次に撮る段階を自動で選ぶ（保存直後の結果表示中に切り替わらないように）
+  // 撮るたびに メイク前／メイク後 を選ぶ
   const [phase, setPhase] = useState<PilotPhase>('before');
-  const [phaseTouched, setPhaseTouched] = useState(false);
-  useEffect(() => { if (!phaseTouched) setPhase(hasBefore && !hasAfter ? 'after' : 'before'); }, [hasBefore, hasAfter, phaseTouched]);
-  const choosePhase = useCallback((p: PilotPhase) => { setPhaseTouched(true); setPhase(p); }, []);
+  const choosePhase = useCallback((p: PilotPhase) => setPhase(p), []);
+  const getUrls = useCallback((paths: string[]) => fetchOwnMediaUrls(token, paths), [token]);
 
   // ── 撮影・解析
   const [detect, setDetect]     = useState<DetectState>('idle');
@@ -155,8 +156,9 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
 
   const handleSave = useCallback(async () => {
     if (!guide || !metrics || !card || !rx || !imgSize || !dataUrl || !framing || !analysis) return;
-    if (!consentOk) { setSaveMsg('上の「同意」をすべて入力してください'); return; }
-    setPhaseTouched(true); setSaveState('saving'); setSaveMsg('');
+    if (!consentOk) { setSaveMsg('先に「同意」を済ませてください'); return; }
+    if (limitReached) { setSaveMsg(`撮影は1人${info.limit}枚までです`); return; }
+    setSaveState('saving'); setSaveMsg('');
     // 顔の設計図を画像にし、顔カルテを作る（カルテはこの端末の「顔カルテ」にも残す）
     const blueprint = await renderBlueprintJpeg(blueprintRef.current, dataUrl);
     setBlueprintUrl(blueprint);
@@ -168,7 +170,7 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
     const karte = { ...karteFull }; delete karte.imageSrc; // 写真は storage 側にある
     const rec: PilotRecord = {
       id: newPilotId(info.subjectCode, phase), token, subjectCode: info.subjectCode, phase, takenAt: new Date().toISOString(), event: info.event,
-      consent: true, isMinor: minor, guardianName: minor ? consent.guardianName.trim() : undefined,
+      consent: true, isMinor: info.consentBy === 'guardian', // 同意の中身はサーバーの参加者記録を使う
       imageDataUrl: dataUrl, imageWidth: imgSize.w, imageHeight: imgSize.h, guide, metrics, targetCard: card, prescription: rx, framing,
       blueprintDataUrl: blueprint ?? undefined, karte,
       appVersion: PILOT_APP_VERSION, syncState: 'local',
@@ -176,19 +178,22 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
     upsertLocal(rec);
     const synced = await syncPilotRecord(rec);
     upsertLocal(synced);
-    if (synced.syncState === 'synced') { setSaveState('saved'); setSaveMsg('送信しました'); onReload(); }
+    if (synced.syncState === 'synced') { setSaveState('saved'); setSaveMsg('記録に追加しました'); onReload(); }
+    else if (/photo limit/.test(synced.syncError ?? '')) { setSaveState('error'); setSaveMsg(`撮影は1人${info.limit}枚までです。これ以上は送れません`); }
     else { setSaveState('error'); setSaveMsg(`この端末には保存しました。送信は失敗しました（${synced.syncError}）。電波の良い場所で下の「再送」を押してください`); }
-  }, [guide, metrics, card, rx, imgSize, dataUrl, framing, analysis, consentOk, info, phase, token, minor, consent.guardianName, onReload]);
+  }, [guide, metrics, card, rx, imgSize, dataUrl, framing, analysis, consentOk, limitReached, info, phase, token, onReload]);
 
   const rxText = useMemo(() => (card && rx) ? prescriptionToText(info.subjectCode, card, rx) : '', [card, rx, info.subjectCode]);
   const copyRx = useCallback(async () => { try { await navigator.clipboard.writeText(rxText); setSaveMsg('処方をコピーしました'); } catch { setSaveMsg('コピーできませんでした'); } }, [rxText]);
 
   const [resyncMsg, setResyncMsg] = useState('');
   const handleResync = useCallback(async () => { setResyncMsg('再送中…'); const r = await resyncPending(token); setResyncMsg(`成功 ${r.ok}／失敗 ${r.ng}`); if (r.ok) onReload(); }, [token, onReload]);
-  const pendingCount = records.filter(r => r.syncState !== 'synced').length;
+  const pendingCount = pending.length;
 
   const phaseLabel = phase === 'before' ? 'メイク前（素顔）' : 'メイク後';
-  const beforeRx = localBefore?.prescription ?? null;
+  // メイク後を撮るときに見返す処方＝いちばん新しいメイク前の処方
+  const beforeRx = useMemo(() => [...info.history].reverse().find(h => h.phase === 'before')?.prescription ?? null, [info.history]);
+  const sessionCount = useMemo(() => new Set(info.history.map(h => h.sessionDate)).size, [info.history]);
 
   return (
     <>
@@ -198,12 +203,15 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
           <p className="text-sm text-stone-700">あなたのコード <span className="font-semibold text-stone-900">{info.subjectCode}</span></p>
           <button type="button" onClick={onSwitch} className="text-[11px] text-stone-400 underline">別の人のリンクで開く</button>
         </div>
-        <Steps hasBefore={hasBefore} hasAfter={hasAfter} />
+        <p className="text-xs text-stone-500">これまで {sessionCount}回・{info.count}枚　／　撮影できるのは あと {Math.max(0, info.limit - used)}枚（1人{info.limit}枚まで）</p>
       </Card>
 
-      {/* ── 同意 */}
+      {/* ── 同意（初回だけ） */}
+      {consentOk ? (
+        <p className="text-[11px] text-stone-400 flex items-center gap-1.5 px-1"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> 同意済み（{new Date(info.consentedAt!).toLocaleDateString('ja-JP')}{info.consentBy === 'guardian' ? '・保護者の同意あり' : ''}）</p>
+      ) : (
       <Card>
-        <p className="text-sm font-semibold text-stone-800">同意</p>
+        <p className="text-sm font-semibold text-stone-800">同意（はじめの1回だけ）</p>
         {!forcedMinor && (
           <Field label="撮影する日の年齢">
             <div className="flex rounded-lg border border-stone-300 overflow-hidden divide-x divide-stone-300">
@@ -215,7 +223,7 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
         )}
         <label className="flex items-start gap-3 text-xs text-stone-600 leading-relaxed">
           <input type="checkbox" checked={consent.selfConsent} onChange={e => setConsent({ selfConsent: e.target.checked })} className="mt-0.5" />
-          <span>撮影した顔写真と測定値を、ミス・ワールドJAPAN運営と「黄金比 Face OS」の研究開発（メイク前後の比較を含む）に使うことに同意します。写真は運営だけが扱い、公開や第三者への提供はしません。同意の取り消しは運営にご連絡ください。</span>
+          <span>撮影した顔写真と測定値を、ミス・ワールドJAPAN運営と「黄金比 Face OS」の研究開発（メイク前後の比較を含む）に使うことに同意します。写真はご本人と運営だけが扱い、公開や第三者への提供はしません。同意の取り消しは運営にご連絡ください。</span>
         </label>
         {minor && (
           <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 space-y-2">
@@ -227,28 +235,33 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
             </label>
           </div>
         )}
-        {consentOk
-          ? <p className="text-xs text-emerald-700 flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" /> 同意を確認しました</p>
+        {formOk
+          ? <button type="button" onClick={submitConsent} className={`${primaryBtn} w-full justify-center py-3`}><CheckCircle2 className="w-4 h-4" /> 同意して始める</button>
           : <p className="text-xs text-amber-800 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">撮影に進むには：{[
               !forcedMinor && consent.age === null && '年齢を選ぶ',
               !consent.selfConsent && '同意にチェック',
               minor && !consent.guardianName.trim() && '保護者の氏名を入力',
               minor && !consent.guardianConsent && '保護者の同意にチェック',
             ].filter(Boolean).join('・')}</p>}
+        {consentMsg && <p className="text-xs text-stone-600">{consentMsg}</p>}
       </Card>
+      )}
 
       {/* ── 撮影 */}
-      {consentOk && !guide && (
+      {consentOk && !guide && limitReached && (
+        <Card><p className="text-sm text-stone-700">撮影できる枚数（{info.limit}枚）に達しました。これまでの記録は下で見られます。</p></Card>
+      )}
+      {consentOk && !guide && !limitReached && (
         <Card>
-          <div className="flex rounded-lg border border-stone-200 overflow-hidden">
+          <p className="text-sm font-semibold text-stone-800 flex items-center gap-2"><Camera className="w-4 h-4" /> 撮影する</p>
+          <div className="flex rounded-lg border border-stone-300 overflow-hidden divide-x divide-stone-300">
             {(['before', 'after'] as PilotPhase[]).map(p => (
-              <button key={p} type="button" disabled={p === 'after' && !hasBefore} onClick={() => { choosePhase(p); reset(); }}
-                className={`flex-1 py-2 text-sm disabled:opacity-40 ${phase === p ? 'bg-stone-800 text-white' : 'bg-white text-stone-600'}`}>
+              <button key={p} type="button" onClick={() => { choosePhase(p); reset(); }}
+                className={`flex-1 py-2.5 text-sm font-medium ${phase === p ? 'bg-stone-800 text-white' : 'bg-stone-50 text-stone-700'}`}>
                 {p === 'before' ? 'メイク前（素顔）' : 'メイク後'}
               </button>
             ))}
           </div>
-          {!hasBefore && <p className="text-[11px] text-stone-500">先に「メイク前（素顔）」を撮ってください。メイク後はそのあとで撮れます。</p>}
           <p className="text-sm font-semibold text-stone-800">{phaseLabel}を撮る</p>
           <ul className="text-xs text-stone-600 space-y-1 list-disc pl-5">
             {phase === 'before' ? <>
@@ -258,13 +271,13 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
               <li>できれば家族や友人に撮ってもらいます。自撮りのときは、スマホを目の高さで、腕をいっぱいに伸ばします</li>
               <li>まっすぐ前を見て、口を閉じ、無表情で撮ります</li>
             </> : <>
-              <li>「メイク前」と同じ場所・同じ明かり・同じ距離で撮ってください</li>
+              <li>その日の「メイク前」と同じ場所・同じ明かり・同じ距離で撮ってください（メイクの前後を比べるため）</li>
               <li>前髪を上げて額を出します。眼鏡・カラーコンタクトは外してください</li>
               <li>まっすぐ前を見て、口を閉じ、無表情で撮ります</li>
             </>}
           </ul>
           {phase === 'after' && beforeRx && (
-            <details className="text-xs text-stone-600"><summary className="cursor-pointer">メイク前に出た処方をもう一度見る</summary><RxList rx={beforeRx} /></details>
+            <details className="text-xs text-stone-600"><summary className="cursor-pointer">前回のメイク前に出た処方をもう一度見る</summary><RxList rx={beforeRx} /></details>
           )}
           <PhotoPicker onImage={handleImage} />
           {detect === 'detecting' && <p className="text-xs text-amber-700 flex items-center gap-2"><RefreshCw className="w-3.5 h-3.5 animate-spin" /> 顔を検出しています…</p>}
@@ -353,64 +366,40 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
             {blueprintUrl && saveState !== 'saving' && (
               <a href={blueprintUrl} download={`face-blueprint_${info.subjectCode}_${phase}.jpg`} className={ghostBtn}><Download className="w-3.5 h-3.5" /> 顔の設計図を画像で保存</a>
             )}
-            {saveState === 'saved' && phase === 'before' && (
+            {saveState === 'saved' && (
               <div className="rounded-xl bg-stone-50 border border-stone-200 p-3 space-y-2 text-xs text-stone-700">
-                <p>次は、上の処方を参考にメイクをしてから「メイク後」を撮ってください。同じ場所・同じ明かりで撮ると、比べやすくなります。</p>
-                <button type="button" onClick={() => { choosePhase('after'); reset(); }} className={ghostBtn}><Camera className="w-3.5 h-3.5" /> メイク後を撮る</button>
+                <p>{phase === 'before'
+                  ? '上の処方を参考にメイクをしたら、同じ場所・同じ明かりで「メイク後」を撮ってください。'
+                  : '記録に追加しました。下の「あなたの記録」で、これまでの設計図とカルテを見られます。'}</p>
+                <div className="flex flex-wrap gap-2">
+                  {phase === 'before' && <button type="button" onClick={() => { choosePhase('after'); reset(); }} className={ghostBtn}><Camera className="w-3.5 h-3.5" /> メイク後を撮る</button>}
+                  <button type="button" onClick={reset} className={ghostBtn}><Camera className="w-3.5 h-3.5" /> 続けて撮る</button>
+                </div>
               </div>
             )}
-            {saveState === 'saved' && phase === 'after' && <p className="text-sm text-emerald-700">2枚とも届きました。ご協力ありがとうございました。</p>}
           </Card>
         </>
       )}
 
-      {/* ── この端末の記録 */}
-      {records.length > 0 && (
+      {/* ── 未送信（電波が悪かったとき） */}
+      {pendingCount > 0 && (
         <Card>
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <p className="text-sm font-semibold text-stone-800 flex items-center gap-2"><ClipboardList className="w-4 h-4" /> この端末から撮った記録</p>
+            <p className="text-sm font-semibold text-rose-700 flex items-center gap-2"><ClipboardList className="w-4 h-4" /> まだ送れていない撮影が {pendingCount}件あります</p>
             <div className="flex items-center gap-2">
-              {pendingCount > 0 && <button type="button" onClick={handleResync} className={ghostBtn}><Database className="w-3.5 h-3.5" /> 再送（{pendingCount}件）</button>}
+              <button type="button" onClick={handleResync} className={ghostBtn}><Database className="w-3.5 h-3.5" /> 再送</button>
               {resyncMsg && <span className="text-xs text-stone-500">{resyncMsg}</span>}
             </div>
           </div>
-          <ul className="text-xs text-stone-600 space-y-1">
-            {records.map(r => (
-              <li key={r.id} className="flex justify-between border-t border-stone-100 pt-1">
-                <span>{new Date(r.takenAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}　{r.phase === 'before' ? 'メイク前' : 'メイク後'}</span>
-                <span className={r.syncState === 'synced' ? 'text-emerald-700' : 'text-rose-700'}>{r.syncState === 'synced' ? '送信済み' : '未送信'}</span>
-              </li>
-            ))}
-          </ul>
         </Card>
       )}
+
+      {/* ── あなたの記録（回ごと）と、黄金比からのずれの変化 */}
+      <Card>
+        <p className="text-sm font-semibold text-stone-800 flex items-center gap-2"><ClipboardList className="w-4 h-4" /> あなたの記録</p>
+        <PilotHistory history={info.history} getUrls={getUrls} />
+      </Card>
     </>
-  );
-}
-
-function Steps({ hasBefore, hasAfter }: { hasBefore: boolean; hasAfter: boolean }) {
-  const items: Array<[string, boolean]> = [['① メイク前（素顔）を撮る', hasBefore], ['② 処方を見てメイクする', hasBefore && hasAfter], ['③ メイク後を撮る', hasAfter]];
-  return (
-    <ol className="text-xs space-y-1">
-      {items.map(([l, done]) => <li key={l} className={`flex items-center gap-1.5 ${done ? 'text-emerald-700' : 'text-stone-500'}`}>{done ? <CheckCircle2 className="w-3.5 h-3.5" /> : <span className="w-3.5 h-3.5 rounded-full border border-stone-300 inline-block" />}{l}</li>)}
-    </ol>
-  );
-}
-
-function RxList({ rx }: { rx: Prescription }) {
-  return (
-    <ol className="space-y-2 mt-2">
-      {rx.items.map((i, idx) => (
-        <li key={i.techniqueId} className="rounded-xl border border-stone-200 p-3 text-xs space-y-1">
-          <div className="flex items-center gap-2"><span className="inline-flex w-5 h-5 rounded-full bg-stone-800 text-white items-center justify-center text-[10px]">{idx + 1}</span><span className="text-[10px] text-stone-400">{i.step} {i.stepLabel}</span></div>
-          <p className="text-sm font-semibold text-stone-800">{i.name}</p>
-          <p><span className="text-stone-400">量：</span><span className="font-medium">{i.amount}</span></p>
-          <p><span className="text-stone-400">場所：</span>{i.where}</p>
-          <p><span className="text-stone-400">色：</span>{i.color}</p>
-          {i.caution && <p className="text-rose-700"><span className="text-stone-400">注意：</span>{i.caution}</p>}
-        </li>
-      ))}
-    </ol>
   );
 }
 
@@ -431,7 +420,7 @@ function PhotoPicker({ onImage }: { onImage: (url: string) => void }) {
         <ImageIcon className="w-4 h-4" /> 撮った写真から選ぶ
         <input type="file" accept="image/*" onChange={onChange} className="hidden" />
       </label>
-      <p className="text-[11px] text-stone-400 flex items-center gap-1"><Lock className="w-3 h-3" /> 写真は送信すると、運営だけが見られる場所に保存されます</p>
+      <p className="text-[11px] text-stone-400 flex items-center gap-1"><Lock className="w-3 h-3" /> 写真は送信すると、あなたと運営だけが見られる場所に保存されます</p>
     </div>
   );
 }
@@ -456,7 +445,7 @@ function Header() {
     <div className="flex items-baseline justify-between gap-3 flex-wrap">
       <div>
         <h2 className="text-base font-semibold text-stone-900">ミス・ワールドJAPAN 顔の撮影</h2>
-        <p className="text-xs text-stone-500">メイク前（素顔）とメイク後を、ご自身のスマホで撮って送ってください。</p>
+        <p className="text-xs text-stone-500">期間中、何度でも撮影できます。撮るたびに「メイク前（素顔）」か「メイク後」を選んでください。</p>
       </div>
       <span className="text-[10px] text-stone-400">{PILOT_APP_VERSION}</span>
     </div>

@@ -6,14 +6,16 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 /** container は BlueprintCanvas を包む要素。描けなければ null */
-export async function renderBlueprintJpeg(container: HTMLElement | null, photoDataUrl: string): Promise<string | null> {
+export async function renderBlueprintJpeg(container: HTMLElement | null, photoDataUrl: string, maxSide = 900): Promise<string | null> {
   try {
     const svg = container?.querySelector('svg');
     const shown = container?.querySelector('img');
     if (!svg || !shown || !shown.clientWidth || !shown.clientHeight) return null;
 
+    // 容量節約のため長辺 maxSide px に縮める（1人30枚 × 40名で無料枠に収める）
     const photo = await loadImage(photoDataUrl);
-    const W = photo.naturalWidth, H = photo.naturalHeight;
+    const s = Math.min(1, maxSide / Math.max(photo.naturalWidth, photo.naturalHeight));
+    const W = Math.round(photo.naturalWidth * s), H = Math.round(photo.naturalHeight * s);
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const ctx = c.getContext('2d'); if (!ctx) return null;
     ctx.filter = 'saturate(0.45) contrast(1.08) brightness(0.88)'; // 画面と同じトーン（未対応の端末では無視される）
@@ -27,7 +29,7 @@ export async function renderBlueprintJpeg(container: HTMLElement | null, photoDa
     const xml = new XMLSerializer().serializeToString(clone);
     const overlay = await loadImage('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml));
     ctx.drawImage(overlay, 0, 0, W, H);
-    return c.toDataURL('image/jpeg', 0.9);
+    return c.toDataURL('image/jpeg', 0.85);
   } catch (e) {
     console.warn('[pilot] blueprint render failed', e);
     return null;

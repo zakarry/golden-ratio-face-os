@@ -25,6 +25,7 @@ const FaceConditionPage = dynamic(() => import('@/components/karte/FaceCondition
 const TabDailyMakeup = dynamic(() => import('@/components/karte/TabDailyMakeup'), { ssr: false });
 const TabHistory     = dynamic(() => import('@/components/karte/TabHistory'),     { ssr: false });
 const PilotPage      = dynamic(() => import('@/components/pilot/PilotPage'),       { ssr: false });
+const StaffPage      = dynamic(() => import('@/components/pilot/StaffPage'),       { ssr: false });
 
 type NavId = 'home' | 'identity' | 'condition' | 'design' | 'karte' | 'insight' | 'pilot';
 type Gender = 'female' | 'male';
@@ -44,25 +45,29 @@ export default function Home() {
   const [gender, setGender]       = useState<Gender>('female');
   const [level, setLevel]         = useState<UserLevel>('advanced');
 
-  // 参加者の専用リンク（?p=）はパイロットだけを表示する
-  const [participantMode, setParticipantMode] = useState(false);
-  useEffect(() => { if (new URLSearchParams(window.location.search).has('p')) setParticipantMode(true); }, []);
+  // 参加者の専用リンク（?p=）はパイロットだけ、運営ページ（?staff=1）はスタッフ画面だけを表示する
+  const [standalone, setStandalone] = useState<'participant' | 'staff' | null>(null);
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (q.has('staff')) setStandalone('staff');
+    else if (q.has('p')) setStandalone('participant');
+  }, []);
 
   const isMale = gender === 'male';
 
-  if (participantMode) {
+  if (standalone) {
     return (
       <div className="min-h-screen bg-[#F7F1E8]">
         <header className="border-b border-stone-200/60 bg-white/90 backdrop-blur-sm">
-          <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
+          <div className={`${standalone === 'staff' ? 'max-w-5xl' : 'max-w-2xl'} mx-auto px-4 py-4 flex items-center gap-3`}>
             <div className="w-9 h-9 rounded-full flex items-center justify-center bg-gradient-to-br from-champagne/50 to-amber-100/60">
               <ScanFace className="w-5 h-5 text-gold" strokeWidth={1.5} />
             </div>
             <h1 className="text-sm font-semibold text-stone-900 tracking-tight">黄金比 Face OS</h1>
           </div>
         </header>
-        <main className="max-w-2xl mx-auto px-4 py-6">
-          <PilotPage />
+        <main className={`${standalone === 'staff' ? 'max-w-5xl' : 'max-w-2xl'} mx-auto px-4 py-6`}>
+          {standalone === 'staff' ? <StaffPage /> : <PilotPage />}
         </main>
       </div>
     );
