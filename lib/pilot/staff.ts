@@ -48,6 +48,8 @@ export function resetLocalAuth() {
 export interface ParticipantSummary {
   token: string;
   subjectCode: string;
+  /** 名前（スタッフだけが見る） */
+  name: string;
   isMinor: boolean | null;
   consentedAt: string | null;
   consentBy: string | null;
@@ -64,7 +66,7 @@ export async function listParticipants(): Promise<ParticipantSummary[]> {
   const supabase = getSupabaseClient();
   if (!supabase) return [];
   const { data: ps, error } = await supabase.from('pilot_participants')
-    .select('token, subject_code, is_minor, consented_at, consent_by').order('subject_code');
+    .select('token, subject_code, display_name, is_minor, consented_at, consent_by').order('subject_code');
   if (error || !ps) throw new Error(error?.message ?? '読み込めませんでした');
 
   // 記録は最大 40名×30枚。1回の取得上限（1000行）を超えるので分けて読む
@@ -81,7 +83,7 @@ export async function listParticipants(): Promise<ParticipantSummary[]> {
   return ps.map(p => {
     const mine = rows.filter(r => r.participant_token === p.token);
     return {
-      token: p.token, subjectCode: p.subject_code, isMinor: p.is_minor, consentedAt: p.consented_at, consentBy: p.consent_by,
+      token: p.token, subjectCode: p.subject_code, name: p.display_name ?? '', isMinor: p.is_minor, consentedAt: p.consented_at, consentBy: p.consent_by,
       count: mine.length,
       beforeCount: mine.filter(r => r.phase === 'before').length,
       afterCount: mine.filter(r => r.phase === 'after').length,
@@ -89,6 +91,36 @@ export async function listParticipants(): Promise<ParticipantSummary[]> {
       lastAt: mine.length ? mine[mine.length - 1].taken_at : null,
     };
   });
+}
+
+/** 貼り付けた名簿を読む。1行1人。行末に「未成年」または「*」があれば未成年 */
+export function parseRoster(text: string): { name: string; isMinor: boolean }[] {
+  return text.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => {
+    const isMinor = /(未成年|＊|\*)\s*$/.test(l);
+    const name = l.replace(/[,，、\t\s]*(未成年|＊|\*)\s*$/, '').replace(/[,，、\t]+$/, '').trim();
+    return { name, isMinor };
+  }).filter(r => r.name);
+}
+
+/** 参加者をまとめて登録する。コードは F01, F02 … と空いている番号から振る */
+export async function registerParticipants(roster: { name: string; isMinor: boolean }[], existingCodes: string[]): Promise<number> {
+  const supabase = getSupabaseClient();
+  if (!supabase || roster.length === 0) return 0;
+  let n = existingCodes.reduce((m, c) => { const x = /^F(\d+)$/.exec(c); return x ? Math.max(m, Number(x[1])) : m; }, 0);
+  const rows = roster.map(r => ({ subject_code: `F${String(++n).padStart(2, '0')}`, display_name: r.name, is_minor: r.isMinor }));
+  const { error } = await supabase.from('pilot_participants').insert(rows);
+  if (error) throw new Error(error.message);
+  return rows.length;
+}
+
+export async function updateParticipant(token: string, patch: { name?: string; isMinor?: boolean }) {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  const row: Record<string, unknown> = {};
+  if (patch.name !== undefined) row.display_name = patch.name.trim() || null;
+  if (patch.isMinor !== undefined) row.is_minor = patch.isMinor;
+  const { error } = await supabase.from('pilot_participants').update(row).eq('token', token);
+  if (error) throw new Error(error.message);
 }
 
 export async function getParticipantHistory(token: string): Promise<PilotHistoryItem[]> {

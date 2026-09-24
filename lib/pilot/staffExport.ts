@@ -77,6 +77,7 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
   const s1 = wb.addWorksheet('一覧');
   s1.columns = [
     { header: 'コード', key: 'code', width: 10 },
+    { header: '名前', key: 'name', width: 16 },
     { header: '未成年', key: 'minor', width: 8 },
     { header: '同意', key: 'consent', width: 8 },
     { header: '同意日', key: 'consentAt', width: 12 },
@@ -88,7 +89,7 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
     { header: '専用リンク', key: 'url', width: 70 },
   ];
   list.forEach(p => s1.addRow({
-    code: p.subjectCode, minor: p.isMinor ? '未成年' : '',
+    code: p.subjectCode, name: p.name, minor: p.isMinor ? '未成年' : '',
     consent: p.consentedAt ? (p.consentBy === 'guardian' ? '保護者' : '本人') : '未',
     consentAt: p.consentedAt ? jstDate(p.consentedAt) : '',
     sessions: p.sessions, count: p.count, before: p.beforeCount, after: p.afterCount,
@@ -99,10 +100,12 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
 
   // ── 撮影ごと
   const codeOf = new Map(list.map(p => [p.token, p.subjectCode]));
+  const nameOf = new Map(list.map(p => [p.token, p.name]));
   const s2 = wb.addWorksheet('撮影ごと');
   const withImages = !!opts.withImages;
   s2.columns = [
     { header: 'コード', key: 'code', width: 10 },
+    { header: '名前', key: 'name', width: 16 },
     ...(withImages ? [{ header: '写真', key: 'imgPhoto', width: 18 }, { header: '顔の設計図', key: 'imgBp', width: 18 }] : []),
     { header: '回', key: 'no', width: 5 },
     { header: '撮影日', key: 'date', width: 12 },
@@ -144,7 +147,7 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
 
   sorted.forEach(c => {
       const row: Record<string, unknown> = {
-        code: codeOf.get(c.participant_token) ?? '', no: sessionNo.get(c.participant_token)?.get(jstDate(c.taken_at)),
+        code: codeOf.get(c.participant_token) ?? '', name: nameOf.get(c.participant_token) ?? '', no: sessionNo.get(c.participant_token)?.get(jstDate(c.taken_at)),
         date: jstDate(c.taken_at), time: jstTime(c.taken_at), phase: c.phase === 'before' ? 'メイク前' : 'メイク後',
         ok: c.framing?.ok === false ? '×' : '○', warn: (c.framing?.warnings ?? []).join('・'), bp: c.blueprint_path ? 'あり' : '',
         tri: c.tri ?? '', strengths: (c.strengths ?? []).join('、'),
