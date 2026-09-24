@@ -6,8 +6,7 @@
 // トークンが唯一の鍵。他の人の記録や写真は、読むことも上書きすることもできない。
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Camera, CheckCircle2, AlertTriangle, RefreshCw, Copy, Save, ClipboardList, Database, Lock } from 'lucide-react';
-import ImageUploader from '@/components/ImageUploader';
+import { Camera, CheckCircle2, AlertTriangle, RefreshCw, Copy, Save, ClipboardList, Database, Lock, ImageIcon } from 'lucide-react';
 import { detectFaceLandmarks, type DetectedGuide } from '@/lib/faceLandmarks';
 import { computePilotMetrics, buildTargetCard, formatMetric, type TargetCard, type PilotMetrics } from '@/lib/pilot/targetCard';
 import { buildPrescription, prescriptionToText, STRENGTH_LABEL, type Prescription, type Strength } from '@/lib/pilot/prescription';
@@ -187,9 +186,9 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
         <p className="text-sm font-semibold text-stone-800">同意</p>
         {!forcedMinor && (
           <Field label="撮影する日の年齢">
-            <div className="flex rounded-lg border border-stone-200 overflow-hidden">
+            <div className="flex rounded-lg border border-stone-300 overflow-hidden divide-x divide-stone-300">
               {([['adult', '18歳以上'], ['minor', '18歳未満']] as const).map(([v, l]) => (
-                <button key={v} type="button" onClick={() => setConsent({ age: v })} className={`flex-1 py-2 text-sm ${consent.age === v ? 'bg-stone-800 text-white' : 'bg-white text-stone-600'}`}>{l}</button>
+                <button key={v} type="button" onClick={() => setConsent({ age: v })} className={`flex-1 py-2.5 text-sm font-medium ${consent.age === v ? 'bg-stone-800 text-white' : 'bg-stone-50 text-stone-700 active:bg-stone-100'}`}>{l}</button>
               ))}
             </div>
           </Field>
@@ -208,7 +207,14 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
             </label>
           </div>
         )}
-        {consentOk && <p className="text-xs text-emerald-700 flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" /> 同意を確認しました</p>}
+        {consentOk
+          ? <p className="text-xs text-emerald-700 flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" /> 同意を確認しました</p>
+          : <p className="text-xs text-amber-800 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">撮影に進むには：{[
+              !forcedMinor && consent.age === null && '年齢を選ぶ',
+              !consent.selfConsent && '同意にチェック',
+              minor && !consent.guardianName.trim() && '保護者の氏名を入力',
+              minor && !consent.guardianConsent && '保護者の同意にチェック',
+            ].filter(Boolean).join('・')}</p>}
       </Card>
 
       {/* ── 撮影 */}
@@ -240,7 +246,7 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
           {phase === 'after' && beforeRx && (
             <details className="text-xs text-stone-600"><summary className="cursor-pointer">メイク前に出た処方をもう一度見る</summary><RxList rx={beforeRx} /></details>
           )}
-          <ImageUploader onImageSelected={handleImage} privacyNote="写真は送信すると運営だけが見られる場所に保存されます" />
+          <PhotoPicker onImage={handleImage} />
           {detect === 'detecting' && <p className="text-xs text-amber-700 flex items-center gap-2"><RefreshCw className="w-3.5 h-3.5 animate-spin" /> 顔を検出しています…</p>}
           {detect === 'error' && <p className="text-xs text-rose-700">顔を検出できませんでした。正面・明るい場所でもう一度撮ってください</p>}
         </Card>
@@ -362,6 +368,28 @@ function RxList({ rx }: { rx: Prescription }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+/** 撮影。スマホ標準のカメラを呼ぶ（LINE などのアプリ内ブラウザでもカメラが開き、画質も良い） */
+function PhotoPicker({ onImage }: { onImage: (url: string) => void }) {
+  const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f && f.type.startsWith('image/')) onImage(URL.createObjectURL(f));
+    e.target.value = '';
+  };
+  return (
+    <div className="space-y-2">
+      <label className={`${primaryBtn} w-full justify-center py-3.5 cursor-pointer`}>
+        <Camera className="w-5 h-5" /> カメラで撮る
+        <input type="file" accept="image/*" capture="user" onChange={onChange} className="hidden" />
+      </label>
+      <label className={`${ghostBtn} w-full justify-center py-2.5 cursor-pointer`}>
+        <ImageIcon className="w-4 h-4" /> 撮った写真から選ぶ
+        <input type="file" accept="image/*" onChange={onChange} className="hidden" />
+      </label>
+      <p className="text-[11px] text-stone-400 flex items-center gap-1"><Lock className="w-3 h-3" /> 写真は送信すると、運営だけが見られる場所に保存されます</p>
+    </div>
   );
 }
 

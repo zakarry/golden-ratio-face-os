@@ -21,7 +21,8 @@ and "after" on their own phones. The token is the only credential.
   on conflict do nothing;
 
   select subject_code, is_minor,
-         'https://golden-ratio-face-ba-0nxl.bolt.host/?p=' || token as url
+         'https://golden-ratio-face-ba-0nxl.bolt.host/?p=' || token || '&openExternalBrowser=1' as url
+  -- openExternalBrowser=1: LINE で開くと端末の標準ブラウザに切り替わる
   from pilot_participants order by subject_code;
 */
 
