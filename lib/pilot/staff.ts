@@ -31,6 +31,20 @@ export async function staffSignOut() {
   await getSupabaseClient()?.auth.signOut();
 }
 
+/** 一定時間で諦める（ログイン情報の読み込みが他のタブと取り合いになって止まることがある） */
+export function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('timeout')), ms);
+    p.then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
+  });
+}
+
+/** この端末に残っているログイン情報を消して読み込み直す（止まったときの最終手段） */
+export function resetLocalAuth() {
+  try { Object.keys(localStorage).filter(k => k.startsWith('sb-') && k.includes('auth-token')).forEach(k => localStorage.removeItem(k)); } catch { /* noop */ }
+  window.location.replace(`${window.location.origin}/?staff=1`);
+}
+
 export interface ParticipantSummary {
   token: string;
   subjectCode: string;

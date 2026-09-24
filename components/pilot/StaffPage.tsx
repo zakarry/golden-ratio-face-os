@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, Copy, FileSpreadsheet, LogOut, Mail, RefreshCw, Users } from 'lucide-react';
 import { downloadStaffExcel } from '@/lib/pilot/staffExport';
 import {
-  getParticipantHistory, getStaffState, listParticipants, sendStaffLoginLink, staffMediaUrls, staffSignOut,
+  getParticipantHistory, getStaffState, listParticipants, resetLocalAuth, sendStaffLoginLink, staffMediaUrls, staffSignOut, withTimeout,
   type ParticipantSummary, type StaffState,
 } from '@/lib/pilot/staff';
 import type { PilotHistoryItem } from '@/lib/pilot/pilotStorage';
@@ -17,7 +17,12 @@ const fmt = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('ja-J
 
 export default function StaffPage() {
   const [state, setState] = useState<StaffState | null>(null);
-  const refresh = useCallback(async () => setState(await getStaffState()), []);
+  const [stuck, setStuck] = useState(false);
+  const refresh = useCallback(async () => {
+    setState(null); setStuck(false);
+    try { setState(await withTimeout(getStaffState(), 12000)); }
+    catch { setStuck(true); }
+  }, []);
   useEffect(() => { refresh(); }, [refresh]);
 
   const logout = useCallback(async () => { await staffSignOut(); refresh(); }, [refresh]);
@@ -33,7 +38,17 @@ export default function StaffPage() {
           <button type="button" onClick={logout} className={ghostBtn}><LogOut className="w-3.5 h-3.5" /> ログアウト（{state.email}）</button>
         )}
       </div>
-      {!state && <Card><p className="text-sm text-stone-500 flex items-center gap-2"><RefreshCw className="w-4 h-4 animate-spin" /> 読み込んでいます…</p></Card>}
+      {!state && !stuck && <Card><p className="text-sm text-stone-500 flex items-center gap-2"><RefreshCw className="w-4 h-4 animate-spin" /> 読み込んでいます…</p></Card>}
+      {stuck && (
+        <Card>
+          <p className="text-sm text-rose-700">ログイン情報を読み込めませんでした。</p>
+          <p className="text-xs text-stone-600 leading-relaxed">このサイトを開いているほかのタブ（ログインメールのリンクで開いたタブなど）をすべて閉じてから、「もう一度」を押してください。それでも進まないときは「ログインし直す」を押し、メールのリンクからもう一度ログインしてください。</p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={refresh} className={ghostBtn}><RefreshCw className="w-3.5 h-3.5" /> もう一度</button>
+            <button type="button" onClick={resetLocalAuth} className={ghostBtn}><LogOut className="w-3.5 h-3.5" /> ログインし直す</button>
+          </div>
+        </Card>
+      )}
       {state?.kind === 'signedOut' && <Login />}
       {state?.kind === 'notStaff' && <Card><p className="text-sm text-rose-700">{state.email} は運営ページの利用が許可されていません。許可されたメールアドレスでログインし直してください。</p></Card>}
       {state?.kind === 'staff' && <Dashboard />}
