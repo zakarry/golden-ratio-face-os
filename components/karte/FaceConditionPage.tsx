@@ -326,7 +326,7 @@ function PreparationTab() {
       <div className="text-center mb-6">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-champagne/30 to-amber-50/40 border border-champagne/30 mb-4">
           <Activity className="w-3 h-3 text-gold" />
-          <span className="text-[10px] font-semibold tracking-[0.2em] text-gold uppercase">Today's Preparation</span>
+          <span className="text-[10px] font-semibold tracking-[0.2em] text-gold uppercase">Today&apos;s Preparation</span>
         </div>
         <h2
           className="text-2xl font-bold tracking-tight text-stone-900 leading-[1.5]"

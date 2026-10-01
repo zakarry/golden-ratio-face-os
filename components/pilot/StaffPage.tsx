@@ -4,10 +4,10 @@
 // 許可されたメールでログイン → 参加者の一覧 → 1人ずつの経過（写真・設計図・顔カルテ・処方・ずれの推移）
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, Copy, FileSpreadsheet, LogOut, Mail, RefreshCw, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, Copy, FileSpreadsheet, LogOut, Mail, RefreshCw, Trash2, UserPlus, Users } from 'lucide-react';
 import { downloadStaffExcel } from '@/lib/pilot/staffExport';
 import {
-  getParticipantHistory, getStaffState, listParticipants, parseRoster, registerParticipants, resetLocalAuth, sendStaffLoginLink,
+  deleteParticipant, getParticipantHistory, getStaffState, listParticipants, parseRoster, registerParticipants, resetLocalAuth, sendStaffLoginLink,
   staffMediaUrls, staffSignOut, updateParticipant, withTimeout,
   type ParticipantSummary, type StaffState,
 } from '@/lib/pilot/staff';
@@ -207,7 +207,48 @@ function Detail({ p, onBack }: { p: ParticipantSummary; onBack: () => void }) {
       {error && <p className="text-xs text-rose-700">{error}</p>}
       {!history && !error && <p className="text-xs text-stone-400">読み込んでいます…</p>}
       {history && <PilotHistory history={history} getUrls={staffMediaUrls} showPhotos />}
+      <DeleteParticipant p={p} recordCount={history?.length ?? p.count} onDeleted={onBack} />
     </Card>
+  );
+}
+
+/** 参加者の削除（詳細画面の一番下だけに置く）。記録がある人はコードを入力したときだけ削除できる */
+function DeleteParticipant({ p, recordCount, onDeleted }: { p: ParticipantSummary; recordCount: number; onDeleted: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const needsCode = recordCount > 0;
+  const canDelete = !busy && (!needsCode || typed.trim().toUpperCase() === p.subjectCode.toUpperCase());
+  const cancel = () => { setOpen(false); setTyped(''); setErr(''); };
+  const run = async () => {
+    setBusy(true); setErr('');
+    try { await deleteParticipant(p.token); onDeleted(); }
+    catch (e) { setErr(`削除できませんでした（${e instanceof Error ? e.message : String(e)}）`); setBusy(false); }
+  };
+  return (
+    <div className="pt-4 mt-2 border-t border-stone-100">
+      {!open ? (
+        <button type="button" onClick={() => setOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white text-rose-700 text-xs px-3 py-1.5"><Trash2 className="w-3.5 h-3.5" /> この参加者を削除</button>
+      ) : (
+        <div className="rounded-xl border border-rose-300 bg-rose-50 p-4 space-y-3 text-xs text-rose-900">
+          <p className="font-semibold">{p.subjectCode}{p.name ? `（${p.name}）` : ''} を削除します。</p>
+          {needsCode ? (
+            <>
+              <p>撮影記録{recordCount}枚と写真もすべて削除。元に戻せません。</p>
+              <label className="flex flex-wrap items-center gap-2">確認のため、コード「{p.subjectCode}」を入力してください
+                <input value={typed} onChange={e => setTyped(e.target.value)} placeholder={p.subjectCode} className="rounded-lg border border-rose-300 bg-white px-2 py-1 text-sm w-24" autoComplete="off" />
+              </label>
+            </>
+          ) : <p>撮影記録はありません。専用リンクは使えなくなります。</p>}
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={run} disabled={!canDelete} className="inline-flex items-center gap-1.5 rounded-lg bg-rose-700 text-white text-xs font-medium px-3 py-1.5 disabled:opacity-40"><Trash2 className="w-3.5 h-3.5" /> {busy ? '削除中…' : '削除する'}</button>
+            <button type="button" onClick={cancel} disabled={busy} className={ghostBtn}>やめる</button>
+          </div>
+          {err && <p className="text-rose-700">{err}</p>}
+        </div>
+      )}
+    </div>
   );
 }
 

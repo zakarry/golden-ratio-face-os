@@ -123,6 +123,30 @@ export async function updateParticipant(token: string, patch: { name?: string; i
   if (error) throw new Error(error.message);
 }
 
+/**
+ * 参加者を削除する（スタッフのみ）。先に Storage の「token/」フォルダの写真を空にし、
+ * そのあと記録と参加者を消す。写真を消せなければ記録は残したままエラーにする。
+ * 戻り値は削除した撮影記録の数。
+ */
+export async function deleteParticipant(token: string): Promise<number> {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error('Supabase 未設定');
+  const bucket = supabase.storage.from('pilot-photos');
+  for (let round = 0; ; round++) {
+    const { data: files, error } = await bucket.list(token, { limit: 100 });
+    if (error) throw new Error(`写真の一覧を取得できませんでした（${error.message}）`);
+    const paths = (files ?? []).filter(f => f.id).map(f => `${token}/${f.name}`);
+    if (paths.length === 0) break;
+    const { data: removed, error: rmErr } = await bucket.remove(paths);
+    if (rmErr) throw new Error(`写真を削除できませんでした（${rmErr.message}）`);
+    // 権限がないと、エラーにならず何も消えないことがある
+    if (!removed || removed.length === 0 || round > 50) throw new Error('写真を削除できませんでした（削除の権限がない可能性があります）');
+  }
+  const { data, error } = await supabase.rpc('pilot_staff_delete_participant', { p_token: token });
+  if (error) throw new Error(error.message);
+  return typeof data === 'number' ? data : 0;
+}
+
 export async function getParticipantHistory(token: string): Promise<PilotHistoryItem[]> {
   const supabase = getSupabaseClient();
   if (!supabase) return [];
