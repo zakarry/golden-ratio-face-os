@@ -265,8 +265,8 @@ export const FRAMING_LIMITS = {
   /** 傾き（度）。±この値以内 */
   roll: 3,
   /** 画像幅に対する顔幅 */
-  faceMin: 0.48,
-  faceMax: 0.72,
+  faceMin: 0.42,
+  faceMax: 0.66,
 } as const;
 
 export type FramingIssue = 'yaw' | 'roll' | 'small' | 'large';
