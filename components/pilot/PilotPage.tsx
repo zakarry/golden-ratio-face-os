@@ -22,6 +22,7 @@ import {
   savePilotToken, syncPilotRecord, upsertLocal, PILOT_APP_VERSION, type FramingCheck, type ParticipantInfo, type PilotPhase, type PilotRecord,
 } from '@/lib/pilot/pilotStorage';
 import PilotHistory, { RxList } from './PilotHistory';
+import PilotCamera from './PilotCamera';
 
 type DetectState = 'idle' | 'detecting' | 'done' | 'error';
 type Age = 'adult' | 'minor' | null;
@@ -121,6 +122,10 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
 
   // ── 撮影・解析
   const [detect, setDetect]     = useState<DetectState>('idle');
+  // 撮影はガイドつきのアプリ内カメラ。開かないときだけスマホ標準のカメラ（予備）
+  const [useNativeCamera, setUseNativeCamera] = useState(false);
+  // 顔を検出できなかったとき、カメラを作り直して撮り直せるようにする
+  const [cameraKey, setCameraKey] = useState(0);
   const [guide, setGuide]       = useState<DetectedGuide | null>(null);
   const [imgSize, setImgSize]   = useState<{ w: number; h: number } | null>(null);
   const [dataUrl, setDataUrl]   = useState<string | null>(null);
@@ -141,9 +146,9 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
       const { dataUrl: du, w, h } = await toDataUrl(url);
       setDataUrl(du); setImgSize({ w, h });
       const g = await detectFaceLandmarks(du);
-      if (!g) { setDetect('error'); return; }
+      if (!g) { setDetect('error'); setCameraKey(k => k + 1); return; }
       setGuide(g); setFraming(checkFraming(g, w, h)); setDetect('done');
-    } catch (e) { console.error(e); setDetect('error'); }
+    } catch (e) { console.error(e); setDetect('error'); setCameraKey(k => k + 1); }
   }, []);
 
   const reset = useCallback(() => {
@@ -279,7 +284,12 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
           {phase === 'after' && beforeRx && (
             <details className="text-xs text-stone-600"><summary className="cursor-pointer">前回のメイク前に出た処方をもう一度見る</summary><RxList rx={beforeRx} /></details>
           )}
-          <PhotoPicker onImage={handleImage} />
+          {useNativeCamera
+            ? <>
+                <PhotoPicker onImage={handleImage} />
+                <button type="button" onClick={() => setUseNativeCamera(false)} className="text-xs text-stone-500 underline">ガイドつきのカメラに戻す</button>
+              </>
+            : <PilotCamera key={cameraKey} onCapture={handleImage} onFallback={() => setUseNativeCamera(true)} />}
           {detect === 'detecting' && <p className="text-xs text-amber-700 flex items-center gap-2"><RefreshCw className="w-3.5 h-3.5 animate-spin" /> 顔を検出しています…</p>}
           {detect === 'error' && <p className="text-xs text-rose-700">顔を検出できませんでした。正面・明るい場所でもう一度撮ってください</p>}
         </Card>

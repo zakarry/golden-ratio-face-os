@@ -258,16 +258,48 @@ export async function resyncPending(token: string): Promise<{ ok: number; ng: nu
   return { ok, ng };
 }
 
-export function checkFraming(g: DetectedGuide, imageW: number, imageH: number): FramingCheck {
+/** 写りの基準（撮影中のガイドと撮影後のチェックで共通） */
+export const FRAMING_LIMITS = {
+  /** 正面からのずれ（顔幅比）。±この値以内 */
+  yaw: 0.05,
+  /** 傾き（度）。±この値以内 */
+  roll: 3,
+  /** 画像幅に対する顔幅 */
+  faceMin: 0.35,
+  faceMax: 0.6,
+} as const;
+
+export type FramingIssue = 'yaw' | 'roll' | 'small' | 'large';
+
+/** 撮影中のガイドに出す短い言葉 */
+export const FRAMING_HINT: Record<FramingIssue, string> = {
+  yaw: '正面へ',
+  roll: '傾いています',
+  small: '近づいて',
+  large: '少し離れて',
+};
+
+export function measureFraming(g: DetectedGuide, imageW: number, imageH: number) {
   const W = (g.faceRightX - g.faceLeftX);
   const mid = (g.faceLeftX + g.faceRightX) / 2;
   const yaw = (g.centerLineX - mid) / W;                       // 0 = 正面
   const roll = Math.atan2((g.rightEyeY - g.leftEyeY) * imageH, (g.rightEyeX - g.leftEyeX) * imageW) * 180 / Math.PI;
   const faceWidthFrac = W; // 0–1 正規化なので画像幅に対する割合
-  const warnings: string[] = [];
-  if (Math.abs(yaw) > 0.05) warnings.push(yaw > 0 ? '顔が少し左を向いています（本人の右側が見えすぎ）。正面へ' : '顔が少し右を向いています。正面へ');
-  if (Math.abs(roll) > 3) warnings.push(`顔が${Math.abs(roll).toFixed(0)}°傾いています。目の高さを水平に`);
-  if (faceWidthFrac < 0.25) warnings.push('顔が小さすぎます。もう少し近づいてください');
-  if (faceWidthFrac > 0.7) warnings.push('顔が大きすぎます。少し離れてください');
+  const issues: FramingIssue[] = [];
+  if (Math.abs(yaw) > FRAMING_LIMITS.yaw) issues.push('yaw');
+  if (Math.abs(roll) > FRAMING_LIMITS.roll) issues.push('roll');
+  if (faceWidthFrac < FRAMING_LIMITS.faceMin) issues.push('small');
+  if (faceWidthFrac > FRAMING_LIMITS.faceMax) issues.push('large');
+  return { yaw, roll, faceWidthFrac, issues };
+}
+
+export function checkFraming(g: DetectedGuide, imageW: number, imageH: number): FramingCheck {
+  const { yaw, roll, faceWidthFrac, issues } = measureFraming(g, imageW, imageH);
+  const warnings = issues.map(i => ({
+    yaw: yaw > 0 ? '顔が少し左を向いています（本人の右側が見えすぎ）。正面へ' : '顔が少し右を向いています。正面へ',
+    roll: `顔が${Math.abs(roll).toFixed(0)}°傾いています。目の高さを水平に`,
+    small: '顔が小さすぎます。もう少し近づいてください',
+    large: '顔が大きすぎます。少し離れてください',
+  })[i]);
   return { yaw, roll, faceWidthFrac, ok: warnings.length === 0, warnings };
 }

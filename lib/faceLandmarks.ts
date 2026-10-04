@@ -128,6 +128,19 @@ export async function detectFaceLandmarks(
   canvas.height = img.naturalHeight;
   canvas.getContext('2d')!.drawImage(img, 0, 0);
 
+  return detectGuideWith(landmarker, canvas);
+}
+
+/**
+ * Detect on an already-drawn canvas (e.g. a downscaled live camera frame).
+ * Used by the pilot camera to check framing several times per second.
+ */
+export async function detectGuideOnCanvas(canvas: HTMLCanvasElement): Promise<DetectedGuide | null> {
+  const landmarker = await getLandmarker();
+  return detectGuideWith(landmarker, canvas);
+}
+
+function detectGuideWith(landmarker: FaceLandmarker, canvas: HTMLCanvasElement): DetectedGuide | null {
   const result = landmarker.detect(canvas);
   if (!result.faceLandmarks || result.faceLandmarks.length === 0) return null;
 
