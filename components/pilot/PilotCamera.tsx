@@ -124,8 +124,8 @@ export default function PilotCamera({ onCapture, onFallback }: { onCapture: (dat
 
   // ── ガイドの形（映像の画素座標）
   const vw = dims?.w ?? 3, vh = dims?.h ?? 4;
-  const rx = vw * 0.25;                                   // 楕円の幅＝画面幅の50%
-  const ry = Math.min(rx * 1.35, vh * 0.42);
+  const rx = vw * 0.32;                                   // 楕円の幅＝画面幅の64%（顔を大きめに写す）
+  const ry = Math.min(rx * 1.35, vh * 0.45);
   const cy = Math.min(Math.max(vh * 0.47, ry + vh * 0.07), vh - ry - vh * 0.02);
   const cx = vw / 2;
   const eyeY = cy - ry + ry * 2 * 0.4;                    // 楕円の上から40%
