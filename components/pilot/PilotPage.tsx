@@ -140,6 +140,15 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
   // 顔カルテ（「あなたの顔の設計図」と同じ解析）
   const analysis = useMemo(() => guide ? analyzeFaceFromGuide(guide) : null, [guide]);
   const [blueprintUrl, setBlueprintUrl] = useState<string | null>(null);
+  // 寸法図（2枚目の設計図）。撮ったらすぐ作って画面に出し、送信のときにそのまま使う
+  const [dimensionUrl, setDimensionUrl] = useState<string | null>(null);
+  useEffect(() => {
+    setDimensionUrl(null);
+    if (!guide || !dataUrl) return;
+    let alive = true;
+    renderBlueprintJpeg(dataUrl, guide, null, 'dimension').then(u => { if (alive) setDimensionUrl(u); });
+    return () => { alive = false; };
+  }, [guide, dataUrl]);
 
   const handleImage = useCallback(async (url: string) => {
     setGuide(null); setFraming(null); setBlueprintUrl(null); setDetect('detecting');
@@ -170,6 +179,9 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
     let blueprint = await renderBlueprintJpeg(dataUrl, guide, analysis.triangleAnalysis);
     if (!blueprint) { await new Promise(r => setTimeout(r, 400)); blueprint = await renderBlueprintJpeg(dataUrl, guide, analysis.triangleAnalysis); }
     setBlueprintUrl(blueprint);
+    let dimension = dimensionUrl ?? await renderBlueprintJpeg(dataUrl, guide, null, 'dimension');
+    if (!dimension) { await new Promise(r => setTimeout(r, 400)); dimension = await renderBlueprintJpeg(dataUrl, guide, null, 'dimension'); }
+    if (dimension && !dimensionUrl) setDimensionUrl(dimension);
     const karteFull = buildKarteRecord(phase === 'before' ? 'baseline' : 'dailyMakeup', analysis, {
       guide, note: `ミス・ワールドJAPAN パイロット ${info.subjectCode}（${phase === 'before' ? 'メイク前' : 'メイク後'}）`,
     });
@@ -180,9 +192,9 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
       id: newPilotId(info.subjectCode, phase), token, subjectCode: info.subjectCode, phase, takenAt: new Date().toISOString(), event: info.event,
       consent: true, isMinor: info.consentBy === 'guardian', // 同意の中身はサーバーの参加者記録を使う
       imageDataUrl: dataUrl, imageWidth: imgSize.w, imageHeight: imgSize.h, guide, metrics, targetCard: card, prescription: rx, framing,
-      blueprintDataUrl: blueprint ?? undefined, karte,
+      blueprintDataUrl: blueprint ?? undefined, dimensionDataUrl: dimension ?? undefined, karte,
       // 設計図が作れなかったことを記録に残す（運営ページで作り直せる）
-      note: blueprint ? undefined : 'blueprint_failed',
+      note: [blueprint ? '' : 'blueprint_failed', dimension ? '' : 'dimension_failed'].filter(Boolean).join(',') || undefined,
       appVersion: PILOT_APP_VERSION, syncState: 'local',
     };
     upsertLocal(rec);
@@ -191,7 +203,7 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
     if (synced.syncState === 'synced') { setSaveState('saved'); setSaveMsg('記録に追加しました'); onReload(); }
     else if (/photo limit/.test(synced.syncError ?? '')) { setSaveState('error'); setSaveMsg(`撮影は1人${info.limit}枚までです。これ以上は送れません`); }
     else { setSaveState('error'); setSaveMsg(`この端末には保存しました。送信は失敗しました（${synced.syncError}）。電波の良い場所で下の「再送」を押してください`); }
-  }, [guide, metrics, card, rx, imgSize, dataUrl, framing, analysis, consentOk, limitReached, info, phase, token, onReload]);
+  }, [guide, metrics, card, rx, imgSize, dataUrl, framing, analysis, dimensionUrl, consentOk, limitReached, info, phase, token, onReload]);
 
   const rxText = useMemo(() => (card && rx) ? prescriptionToText(info.subjectCode, card, rx) : '', [card, rx, info.subjectCode]);
   const copyRx = useCallback(async () => { try { await navigator.clipboard.writeText(rxText); setSaveMsg('処方をコピーしました'); } catch { setSaveMsg('コピーできませんでした'); } }, [rxText]);
@@ -328,6 +340,11 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
               <div className="flex justify-center rounded-xl overflow-hidden bg-stone-50 border border-stone-100">
                 <BlueprintCanvas imageSrc={dataUrl} guide={guide} triangleAnalysis={analysis.triangleAnalysis} />
               </div>
+              <p className="text-sm font-semibold text-stone-800 pt-2">寸法図　<span className="text-xs font-normal text-stone-500">顔の縦の比率・目の五分割・目と目の間・鼻〜口〜あご</span></p>
+              <div className="flex justify-center rounded-xl overflow-hidden bg-stone-50 border border-stone-100 min-h-[120px] items-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {dimensionUrl ? <img src={dimensionUrl} alt="寸法図" className="block max-w-full max-h-[500px] rounded-xl" /> : <p className="text-xs text-stone-400">寸法図を作っています…</p>}
+              </div>
               <p className="text-[11px] text-stone-400 leading-relaxed">評価ではなく、顔の構造を知るためのカルテです。黄金比は美しさの点数ではなく、構造を理解するための参考値です。</p>
               {phase === 'before' && (
                 <div className="space-y-3">
@@ -380,6 +397,9 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
             </div>
             {blueprintUrl && saveState !== 'saving' && (
               <a href={blueprintUrl} download={`face-blueprint_${info.subjectCode}_${phase}.jpg`} className={ghostBtn}><Download className="w-3.5 h-3.5" /> 顔の設計図を画像で保存</a>
+            )}
+            {dimensionUrl && saveState === 'saved' && (
+              <a href={dimensionUrl} download={`face-dimension_${info.subjectCode}_${phase}.jpg`} className={ghostBtn}><Download className="w-3.5 h-3.5" /> 寸法図を画像で保存</a>
             )}
             {saveState === 'saved' && (
               <div className="rounded-xl bg-stone-50 border border-stone-200 p-3 space-y-2 text-xs text-stone-700">

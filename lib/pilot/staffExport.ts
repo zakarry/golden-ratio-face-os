@@ -47,6 +47,7 @@ export interface CaptureRow {
   gr: { faceRatio?: number; eyePosition?: number; mouthPosition?: number } | null;
   image_path: string | null;
   blueprint_path: string | null;
+  dimension_path: string | null;
 }
 
 export async function fetchCaptures(): Promise<CaptureRow[]> {
@@ -55,7 +56,7 @@ export async function fetchCaptures(): Promise<CaptureRow[]> {
   const rows: CaptureRow[] = [];
   for (let from = 0; ; from += 500) {
     const { data, error } = await supabase.from('pilot_records')
-      .select('participant_token, phase, taken_at, framing, metrics, actionable:target_card->actionableCount, headline:prescription->>headline, tri:karte->triangleAnalysis->>label, strengths:karte->strengths, gr:karte->goldenRatio, image_path, blueprint_path')
+      .select('participant_token, phase, taken_at, framing, metrics, actionable:target_card->actionableCount, headline:prescription->>headline, tri:karte->triangleAnalysis->>label, strengths:karte->strengths, gr:karte->goldenRatio, image_path, blueprint_path, dimension_path')
       .not('participant_token', 'is', null).order('taken_at').range(from, from + 499);
     if (error) throw new Error(error.message);
     rows.push(...((data ?? []) as unknown as CaptureRow[]));
@@ -106,7 +107,7 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
   s2.columns = [
     { header: 'コード', key: 'code', width: 10 },
     { header: '名前', key: 'name', width: 16 },
-    ...(withImages ? [{ header: '写真', key: 'imgPhoto', width: 18 }, { header: '顔の設計図', key: 'imgBp', width: 18 }] : []),
+    ...(withImages ? [{ header: '写真', key: 'imgPhoto', width: 18 }, { header: '顔の設計図', key: 'imgBp', width: 18 }, { header: '寸法図', key: 'imgDim', width: 18 }] : []),
     { header: '回', key: 'no', width: 5 },
     { header: '撮影日', key: 'date', width: 12 },
     { header: '時刻', key: 'time', width: 7 },
@@ -114,6 +115,7 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
     { header: '写りOK', key: 'ok', width: 7 },
     { header: '写りの注意', key: 'warn', width: 28 },
     { header: '設計図', key: 'bp', width: 7 },
+    { header: '寸法図', key: 'dim', width: 7 },
     { header: '顔印象タイプ', key: 'tri', width: 18 },
     { header: '強み', key: 'strengths', width: 36 },
     { header: '黄金比 縦横', key: 'grFace', width: 11 },
@@ -137,7 +139,7 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
   // 写真つき：署名付きURLを取り、縮小画像を作る
   const thumbs = new Map<string, { base64: string; w: number; h: number } | null>();
   if (withImages) {
-    const paths = sorted.flatMap(c => [c.image_path, c.blueprint_path]).filter((p): p is string => !!p);
+    const paths = sorted.flatMap(c => [c.image_path, c.blueprint_path, c.dimension_path]).filter((p): p is string => !!p);
     const urls: Record<string, string> = {};
     for (let i = 0; i < paths.length; i += 100) Object.assign(urls, await staffMediaUrls(paths.slice(i, i + 100)));
     await mapLimit(paths, 6, async p => { thumbs.set(p, urls[p] ? await thumbnail(urls[p]) : null); },
@@ -149,7 +151,7 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
       const row: Record<string, unknown> = {
         code: codeOf.get(c.participant_token) ?? '', name: nameOf.get(c.participant_token) ?? '', no: sessionNo.get(c.participant_token)?.get(jstDate(c.taken_at)),
         date: jstDate(c.taken_at), time: jstTime(c.taken_at), phase: c.phase === 'before' ? 'メイク前' : 'メイク後',
-        ok: c.framing?.ok === false ? '×' : '○', warn: (c.framing?.warnings ?? []).join('・'), bp: c.blueprint_path ? 'あり' : '',
+        ok: c.framing?.ok === false ? '×' : '○', warn: (c.framing?.warnings ?? []).join('・'), bp: c.blueprint_path ? 'あり' : '', dim: c.dimension_path ? 'あり' : '',
         tri: c.tri ?? '', strengths: (c.strengths ?? []).join('、'),
         grFace: c.gr?.faceRatio ?? '', grEye: c.gr?.eyePosition ?? '', grMouth: c.gr?.mouthPosition ?? '',
         actionable: c.actionable ?? '', rx: c.headline ?? '',
@@ -159,7 +161,7 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
       if (withImages) {
         added.height = THUMB_H * 0.75 + 6; // 行の高さはポイント（px×0.75）
         added.alignment = { vertical: 'top', wrapText: true };
-        ([['imgPhoto', c.image_path], ['imgBp', c.blueprint_path]] as const).forEach(([key, path]) => {
+        ([['imgPhoto', c.image_path], ['imgBp', c.blueprint_path], ['imgDim', c.dimension_path]] as const).forEach(([key, path]) => {
           const t = path ? thumbs.get(path) : null;
           if (!t) return;
           const id = wb.addImage({ base64: t.base64, extension: 'jpeg' });

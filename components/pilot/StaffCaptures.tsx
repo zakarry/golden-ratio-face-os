@@ -52,7 +52,7 @@ export default function StaffCaptures({ list, onOpenPerson }: { list: Participan
   useEffect(() => { setPage(0); setViewing(null); }, [person, phase]);
 
   // 表示中のページの画像だけURLを取る
-  const pathsKey = shown.flatMap(r => [r.image_path, r.blueprint_path]).filter((p): p is string => !!p && !urls[p]).join('|');
+  const pathsKey = shown.flatMap(r => [r.image_path, r.blueprint_path, r.dimension_path]).filter((p): p is string => !!p && !urls[p]).join('|');
   useEffect(() => {
     if (!pathsKey) return;
     let alive = true;
@@ -85,7 +85,7 @@ export default function StaffCaptures({ list, onOpenPerson }: { list: Participan
           <table className="text-xs whitespace-nowrap">
             <thead className="bg-[#F3E9D8] text-stone-700">
               <tr className="text-left">
-                {['コード', '名前', '写真', '顔の設計図', '回', '撮影日', '時刻', '段階', '写り', '写りの注意', '顔印象タイプ', '強み', '黄金比 縦横', '目位置', '口位置', '修正対象'].map(h => <th key={h} className="px-2 py-2 font-semibold">{h}</th>)}
+                {['コード', '名前', '写真', '顔の設計図', '寸法図', '回', '撮影日', '時刻', '段階', '写り', '写りの注意', '顔印象タイプ', '強み', '黄金比 縦横', '目位置', '口位置', '修正対象'].map(h => <th key={h} className="px-2 py-2 font-semibold">{h}</th>)}
                 {METRIC_DEFS.map(d => <th key={d.id} className="px-2 py-2 font-semibold" title={`黄金比 ${d.unit === '°' ? d.ideal + '°' : d.ideal.toFixed(3)}`}>{d.label.replace(/（.*?）/g, '')}<br /><span className="font-normal text-stone-500">黄金比 {d.unit === '°' ? d.ideal + '°' : d.ideal.toFixed(3)}</span></th>)}
                 <th className="px-2 py-2 font-semibold">処方</th>
               </tr>
@@ -99,6 +99,7 @@ export default function StaffCaptures({ list, onOpenPerson }: { list: Participan
                     <td className="px-2 py-2">{p?.name}</td>
                     <td className="px-2 py-2 min-w-[136px]"><Thumb url={r.image_path ? urls[r.image_path] : undefined} has={!!r.image_path} alt="写真" onOpen={() => setViewing(filtered.indexOf(r))} /></td>
                     <td className="px-2 py-2 min-w-[136px]"><Thumb url={r.blueprint_path ? urls[r.blueprint_path] : undefined} has={!!r.blueprint_path} alt="顔の設計図" onOpen={() => setViewing(filtered.indexOf(r))} /></td>
+                    <td className="px-2 py-2 min-w-[136px]"><Thumb url={r.dimension_path ? urls[r.dimension_path] : undefined} has={!!r.dimension_path} alt="寸法図" onOpen={() => setViewing(filtered.indexOf(r))} /></td>
                     <td className="px-2 py-2 text-right">{sessionNo.get(r.participant_token)?.get(jstDate(r.taken_at))}</td>
                     <td className="px-2 py-2">{jstDate(r.taken_at)}</td>
                     <td className="px-2 py-2">{jstTime(r.taken_at)}</td>
@@ -157,7 +158,7 @@ function Viewer({ row, person, urls, setUrls, onClose, onPrev, onNext }: {
   onClose: () => void; onPrev?: () => void; onNext?: () => void;
 }) {
   // 別のページの撮影に移ったときは、その画像のURLを取る
-  const need = [row.image_path, row.blueprint_path].filter((p): p is string => !!p && !urls[p]).join('|');
+  const need = [row.image_path, row.blueprint_path, row.dimension_path].filter((p): p is string => !!p && !urls[p]).join('|');
   useEffect(() => {
     if (!need) return;
     let alive = true;
@@ -195,9 +196,10 @@ function Viewer({ row, person, urls, setUrls, onClose, onPrev, onNext }: {
       </div>
       <div className="flex-1 flex items-center justify-center gap-4 min-h-0" onClick={e => e.stopPropagation()}>
         <button type="button" onClick={onPrev} disabled={!onPrev} className="shrink-0 rounded-full bg-white/10 p-2 text-white disabled:opacity-20" aria-label="前の撮影"><ChevronLeft className="w-6 h-6" /></button>
-        <div className="grid grid-cols-2 gap-4 min-w-0 max-w-6xl">
+        <div className="grid grid-cols-3 gap-3 min-w-0 max-w-7xl">
           {img(row.image_path, '写真')}
           {img(row.blueprint_path, '顔の設計図')}
+          {img(row.dimension_path, '寸法図')}
         </div>
         <button type="button" onClick={onNext} disabled={!onNext} className="shrink-0 rounded-full bg-white/10 p-2 text-white disabled:opacity-20" aria-label="次の撮影"><ChevronRight className="w-6 h-6" /></button>
       </div>

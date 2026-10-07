@@ -189,7 +189,7 @@ function BlueprintRepair({ onDone }: { onDone: () => void }) {
   if (missing === 0 && !msg) return null;
   return (
     <>
-      {missing > 0 && <button type="button" onClick={run} disabled={busy} className={`${ghostBtn} border-amber-300 text-amber-800`}><RefreshCw className={`w-3.5 h-3.5 ${busy ? 'animate-spin' : ''}`} /> 設計図を作り直す（{missing}件）</button>}
+      {missing > 0 && <button type="button" onClick={run} disabled={busy} className={`${ghostBtn} border-amber-300 text-amber-800`}><RefreshCw className={`w-3.5 h-3.5 ${busy ? 'animate-spin' : ''}`} /> 設計図・寸法図を作る（{missing}件）</button>}
       {msg && <span className="text-xs text-stone-600">{msg}</span>}
     </>
   );

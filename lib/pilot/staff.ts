@@ -150,41 +150,54 @@ export async function deleteParticipant(token: string): Promise<number> {
   return typeof data === 'number' ? data : 0;
 }
 
-/** 設計図の画像がない撮影の数（写真はあるもの） */
+/** 設計図か寸法図の画像がない撮影の数（写真と顔の位置はあるもの） */
 export async function countMissingBlueprints(): Promise<number> {
   const supabase = getSupabaseClient();
   if (!supabase) return 0;
   const { count, error } = await supabase.from('pilot_records').select('id', { count: 'exact', head: true })
-    .is('blueprint_path', null).not('image_path', 'is', null).not('guide', 'is', null);
+    .or('blueprint_path.is.null,dimension_path.is.null').not('image_path', 'is', null).not('guide', 'is', null);
   if (error) throw new Error(error.message);
   return count ?? 0;
 }
 
 /**
- * 設計図のない撮影について、保存済みの写真と顔の位置から設計図を作り直して保存する。
- * 1枚ずつ：写真を取得 → 線を描く → storage に追加 → 記録に設計図の場所を書く。
+ * 設計図・寸法図のない撮影について、保存済みの写真と顔の位置から作り直して保存する。
+ * 1枚ずつ：写真を取得 → 足りない図を描く → storage に追加 → 記録に場所を書く。
  */
 export async function rebuildMissingBlueprints(onProgress?: (done: number, total: number) => void): Promise<{ ok: number; ng: number }> {
   const supabase = getSupabaseClient();
   if (!supabase) return { ok: 0, ng: 0 };
   const { data: rows, error } = await supabase.from('pilot_records')
-    .select('id, participant_token, phase, image_path, guide')
-    .is('blueprint_path', null).not('image_path', 'is', null).not('guide', 'is', null).limit(500);
+    .select('id, participant_token, phase, image_path, guide, blueprint_path, dimension_path')
+    .or('blueprint_path.is.null,dimension_path.is.null').not('image_path', 'is', null).not('guide', 'is', null).limit(1000);
   if (error) throw new Error(error.message);
-  const list = (rows ?? []) as { id: string; participant_token: string; phase: string; image_path: string; guide: DetectedGuide }[];
+  const list = (rows ?? []) as { id: string; participant_token: string; phase: string; image_path: string; guide: DetectedGuide; blueprint_path: string | null; dimension_path: string | null }[];
+  const bucket = supabase.storage.from('pilot-photos');
+  const put = async (jpeg: string, path: string) => {
+    const blob = await (await fetch(jpeg)).blob();
+    const { error: upErr } = await bucket.upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+    if (upErr && !/exist|duplicate/i.test(upErr.message)) throw new Error(upErr.message);
+  };
   let ok = 0, ng = 0;
   for (const r of list) {
     try {
-      const { data: signed } = await supabase.storage.from('pilot-photos').createSignedUrl(r.image_path, 600);
+      const { data: signed } = await bucket.createSignedUrl(r.image_path, 600);
       if (!signed?.signedUrl) throw new Error('写真を取得できません');
       const photo = await (await fetch(signed.signedUrl)).blob();
-      const jpeg = await renderBlueprintJpeg(photo, r.guide, analyzeFaceFromGuide(r.guide).triangleAnalysis);
-      if (!jpeg) throw new Error('設計図を作れません');
-      const path = `${r.participant_token}/${r.phase}_${r.id}_blueprint.jpg`;
-      const blob = await (await fetch(jpeg)).blob();
-      const { error: upErr } = await supabase.storage.from('pilot-photos').upload(path, blob, { contentType: 'image/jpeg', upsert: false });
-      if (upErr && !/exist|duplicate/i.test(upErr.message)) throw new Error(upErr.message);
-      const { error: setErr } = await supabase.rpc('pilot_staff_set_blueprint', { p_id: r.id, p_path: path });
+      let bpPath: string | null = null, dimPath: string | null = null;
+      if (!r.blueprint_path) {
+        const jpeg = await renderBlueprintJpeg(photo, r.guide, analyzeFaceFromGuide(r.guide).triangleAnalysis, 'balance');
+        if (!jpeg) throw new Error('設計図を作れません');
+        bpPath = `${r.participant_token}/${r.phase}_${r.id}_blueprint.jpg`;
+        await put(jpeg, bpPath);
+      }
+      if (!r.dimension_path) {
+        const jpeg = await renderBlueprintJpeg(photo, r.guide, null, 'dimension');
+        if (!jpeg) throw new Error('寸法図を作れません');
+        dimPath = `${r.participant_token}/${r.phase}_${r.id}_dimension.jpg`;
+        await put(jpeg, dimPath);
+      }
+      const { error: setErr } = await supabase.rpc('pilot_staff_set_images', { p_id: r.id, p_blueprint: bpPath, p_dimension: dimPath });
       if (setErr) throw new Error(setErr.message);
       ok++;
     } catch (e) {
@@ -195,7 +208,6 @@ export async function rebuildMissingBlueprints(onProgress?: (done: number, total
   }
   return { ok, ng };
 }
-
 export async function getParticipantHistory(token: string): Promise<PilotHistoryItem[]> {
   const supabase = getSupabaseClient();
   if (!supabase) return [];

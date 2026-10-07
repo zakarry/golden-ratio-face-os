@@ -42,7 +42,7 @@ export default function PilotHistory({ history, getUrls, showPhotos = false }: {
   const sessions = useMemo(() => groupSessions(history), [history]);
   const [urls, setUrls] = useState<Record<string, string>>({});
 
-  const pathsKey = useMemo(() => history.flatMap(h => [h.blueprintPath, showPhotos ? h.imagePath : null]).filter((p): p is string => !!p).join('|'), [history, showPhotos]);
+  const pathsKey = useMemo(() => history.flatMap(h => [h.blueprintPath, h.dimensionPath, showPhotos ? h.imagePath : null]).filter((p): p is string => !!p).join('|'), [history, showPhotos]);
   useEffect(() => {
     if (!pathsKey) return;
     let alive = true;
@@ -79,6 +79,7 @@ function SessionCard({ session, urls, showPhotos }: { session: Session; urls: Re
 function CaptureCard({ h, urls, showPhotos }: { h: PilotHistoryItem; urls: Record<string, string>; showPhotos: boolean }) {
   const [open, setOpen] = useState(false);
   const bp = h.blueprintPath ? urls[h.blueprintPath] : undefined;
+  const dm = h.dimensionPath ? urls[h.dimensionPath] : undefined;
   const ph = showPhotos && h.imagePath ? urls[h.imagePath] : undefined;
   const k = h.karte;
   return (
@@ -87,11 +88,11 @@ function CaptureCard({ h, urls, showPhotos }: { h: PilotHistoryItem; urls: Recor
         <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${h.phase === 'before' ? 'bg-stone-800 text-white' : 'bg-amber-500 text-white'}`}>{phaseLabel(h.phase)}</span>
         <span className="text-stone-400">{fmtTime(h.takenAt)}</span>
       </div>
-      <div className={`grid gap-2 ${ph ? 'grid-cols-2' : 'grid-cols-1'}`}>
-        {ph && <a href={ph} target="_blank" rel="noreferrer"><img src={ph} alt="写真" className="w-full rounded-lg border border-stone-200" /></a>}
-        {bp
-          ? <a href={bp} target="_blank" rel="noreferrer"><img src={bp} alt="顔の設計図" className="w-full rounded-lg border border-stone-200" /></a>
-          : <div className="aspect-[3/4] rounded-lg border border-dashed border-stone-200 flex items-center justify-center text-stone-300"><ImageOff className="w-5 h-5" /></div>}
+      {/* 写真（スタッフのみ）・バランス図・寸法図 */}
+      <div className={`grid gap-2 ${ph ? 'grid-cols-3' : 'grid-cols-2'}`}>
+        {ph && <Pic url={ph} alt="写真" label="写真" />}
+        <Pic url={bp} alt="顔の設計図" label="設計図" />
+        <Pic url={dm} alt="寸法図" label="寸法図" />
       </div>
       {h.framing && !h.framing.ok && <p className="text-amber-700 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> 写りに注意（{h.framing.warnings.join('・')}）</p>}
       {k && (
@@ -117,6 +118,19 @@ function CaptureCard({ h, urls, showPhotos }: { h: PilotHistoryItem; urls: Recor
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+/** 画像1枚（押すと元の大きさで開く）。無いときは空の枠 */
+function Pic({ url, alt, label }: { url?: string; alt: string; label: string }) {
+  return (
+    <div className="space-y-0.5">
+      {url
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <a href={url} target="_blank" rel="noreferrer"><img src={url} alt={alt} className="w-full rounded-lg border border-stone-200" /></a>
+        : <div className="aspect-[3/4] rounded-lg border border-dashed border-stone-200 flex items-center justify-center text-stone-300"><ImageOff className="w-5 h-5" /></div>}
+      <p className="text-[10px] text-stone-400 text-center">{label}</p>
     </div>
   );
 }

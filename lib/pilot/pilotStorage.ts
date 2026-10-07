@@ -37,6 +37,8 @@ export interface PilotRecord {
   imagePath?: string;         // storage 上のパス
   blueprintDataUrl?: string;  // 顔の設計図（写真＋黄金比の線）。送信後は端末から消す
   blueprintPath?: string;
+  dimensionDataUrl?: string;  // 寸法図（縦の分割・目の五分割など）。送信後は端末から消す
+  dimensionPath?: string;
   /** 顔カルテ（強み・顔印象タイプ・黄金比参考値など。画像は含めない） */
   karte?: Omit<FaceKarteRecord, 'imageSrc'>;
   imageWidth: number;
@@ -69,7 +71,7 @@ function writeLocal(records: PilotRecord[]) {
     localStorage.setItem(LS_KEY, JSON.stringify(records));
   } catch {
     // 画像で容量を超えた場合は画像を落として再保存
-    const slim = records.map(r => ({ ...r, imageDataUrl: undefined, blueprintDataUrl: undefined }));
+    const slim = records.map(r => ({ ...r, imageDataUrl: undefined, blueprintDataUrl: undefined, dimensionDataUrl: undefined }));
     try { localStorage.setItem(LS_KEY, JSON.stringify(slim)); } catch { /* give up */ }
   }
   window.dispatchEvent(new Event('face-os-pilot-updated'));
@@ -109,6 +111,7 @@ export interface PilotHistoryItem {
   sessionDate: string;
   imagePath: string | null;
   blueprintPath: string | null;
+  dimensionPath: string | null;
   metrics: PilotMetrics;
   targetCard: TargetCard;
   prescription: Prescription | null;
@@ -134,7 +137,7 @@ export function toHistoryItem(r: any): PilotHistoryItem {
   return {
     id: r.id, phase: r.phase, takenAt: r.taken_at,
     sessionDate: r.session_date ?? new Date(new Date(r.taken_at).getTime() + 9 * 3600e3).toISOString().slice(0, 10),
-    imagePath: r.image_path ?? null, blueprintPath: r.blueprint_path ?? null,
+    imagePath: r.image_path ?? null, blueprintPath: r.blueprint_path ?? null, dimensionPath: r.dimension_path ?? null,
     metrics: r.metrics, targetCard: r.target_card, prescription: r.prescription ?? null, karte: r.karte ?? null, framing: r.framing ?? null,
   };
 }
@@ -213,6 +216,11 @@ export async function syncPilotRecord(record: PilotRecord): Promise<PilotRecord>
       const err = await upload(record.blueprintDataUrl, blueprintPath);
       if (err) return { ...record, syncState: 'error', syncError: `設計図の保存に失敗: ${err}` };
     }
+    const dimensionPath = record.dimensionDataUrl ? `${record.token}/${record.phase}_${record.id}_dimension.jpg` : record.dimensionPath;
+    if (record.dimensionDataUrl && dimensionPath) {
+      const err = await upload(record.dimensionDataUrl, dimensionPath);
+      if (err) return { ...record, syncState: 'error', syncError: `寸法図の保存に失敗: ${err}` };
+    }
 
     const { error } = await supabase.rpc('pilot_submit', {
       p_token: record.token,
@@ -225,6 +233,7 @@ export async function syncPilotRecord(record: PilotRecord): Promise<PilotRecord>
         guardian_name: record.guardianName ?? null,
         image_path: imagePath ?? null,
         blueprint_path: blueprintPath ?? null,
+        dimension_path: dimensionPath ?? null,
         karte: record.karte ?? null,
         image_width: record.imageWidth,
         image_height: record.imageHeight,
@@ -237,9 +246,9 @@ export async function syncPilotRecord(record: PilotRecord): Promise<PilotRecord>
         app_version: record.appVersion,
       },
     });
-    if (error) return { ...record, imagePath, blueprintPath, syncState: 'error', syncError: error.message };
+    if (error) return { ...record, imagePath, blueprintPath, dimensionPath, syncState: 'error', syncError: error.message };
     // 送れたら端末の画像は消して容量を空ける（顔カルテ側に写真の控えがある）
-    return { ...record, imagePath, blueprintPath, imageDataUrl: undefined, blueprintDataUrl: undefined, syncState: 'synced', syncError: undefined };
+    return { ...record, imagePath, blueprintPath, dimensionPath, imageDataUrl: undefined, blueprintDataUrl: undefined, dimensionDataUrl: undefined, syncState: 'synced', syncError: undefined };
   } catch (e) {
     return { ...record, syncState: 'error', syncError: e instanceof Error ? e.message : String(e) };
   }
