@@ -9,6 +9,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Camera, CircleAlert as AlertCircle, RefreshCw, SwitchCamera } from 'lucide-react';
 import { detectGuideOnCanvas } from '@/lib/faceLandmarks';
 import { FRAMING_HINT, measureFraming, type FramingIssue } from '@/lib/pilot/pilotStorage';
+import { releaseCanvas } from '@/lib/pilot/blueprintImage';
 
 type CamState = 'idle' | 'starting' | 'live' | 'captured' | 'error';
 type Facing = 'user' | 'environment';
@@ -100,7 +101,7 @@ export default function PilotCamera({ onCapture, onFallback }: { onCapture: (dat
     };
     const id = window.setInterval(tick, DETECT_INTERVAL_MS);
     tick();
-    return () => { alive = false; window.clearInterval(id); };
+    return () => { alive = false; window.clearInterval(id); releaseCanvas(canvas); };
   }, [state]);
 
   const ok = check.kind === 'face' && check.issues.length === 0;
@@ -116,6 +117,7 @@ export default function PilotCamera({ onCapture, onFallback }: { onCapture: (dat
     if (facing === 'user') { ctx.translate(c.width, 0); ctx.scale(-1, 1); }
     ctx.drawImage(video, 0, 0);
     const dataUrl = c.toDataURL('image/jpeg', 0.92);
+    releaseCanvas(c);
     stopStream();
     setStill(dataUrl);
     setState('captured');

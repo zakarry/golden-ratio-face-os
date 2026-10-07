@@ -3,6 +3,9 @@
 
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import { toHistoryItem, type PilotHistoryItem } from './pilotStorage';
+import { renderBlueprintJpeg } from './blueprintImage';
+import { analyzeFaceFromGuide } from '@/lib/analyzeFaceMock';
+import type { DetectedGuide } from '@/lib/faceLandmarks';
 
 export type StaffState = { kind: 'signedOut' } | { kind: 'notStaff'; email: string } | { kind: 'staff'; email: string };
 
@@ -145,6 +148,52 @@ export async function deleteParticipant(token: string): Promise<number> {
   const { data, error } = await supabase.rpc('pilot_staff_delete_participant', { p_token: token });
   if (error) throw new Error(error.message);
   return typeof data === 'number' ? data : 0;
+}
+
+/** 設計図の画像がない撮影の数（写真はあるもの） */
+export async function countMissingBlueprints(): Promise<number> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return 0;
+  const { count, error } = await supabase.from('pilot_records').select('id', { count: 'exact', head: true })
+    .is('blueprint_path', null).not('image_path', 'is', null).not('guide', 'is', null);
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
+/**
+ * 設計図のない撮影について、保存済みの写真と顔の位置から設計図を作り直して保存する。
+ * 1枚ずつ：写真を取得 → 線を描く → storage に追加 → 記録に設計図の場所を書く。
+ */
+export async function rebuildMissingBlueprints(onProgress?: (done: number, total: number) => void): Promise<{ ok: number; ng: number }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { ok: 0, ng: 0 };
+  const { data: rows, error } = await supabase.from('pilot_records')
+    .select('id, participant_token, phase, image_path, guide')
+    .is('blueprint_path', null).not('image_path', 'is', null).not('guide', 'is', null).limit(500);
+  if (error) throw new Error(error.message);
+  const list = (rows ?? []) as { id: string; participant_token: string; phase: string; image_path: string; guide: DetectedGuide }[];
+  let ok = 0, ng = 0;
+  for (const r of list) {
+    try {
+      const { data: signed } = await supabase.storage.from('pilot-photos').createSignedUrl(r.image_path, 600);
+      if (!signed?.signedUrl) throw new Error('写真を取得できません');
+      const photo = await (await fetch(signed.signedUrl)).blob();
+      const jpeg = await renderBlueprintJpeg(photo, r.guide, analyzeFaceFromGuide(r.guide).triangleAnalysis);
+      if (!jpeg) throw new Error('設計図を作れません');
+      const path = `${r.participant_token}/${r.phase}_${r.id}_blueprint.jpg`;
+      const blob = await (await fetch(jpeg)).blob();
+      const { error: upErr } = await supabase.storage.from('pilot-photos').upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+      if (upErr && !/exist|duplicate/i.test(upErr.message)) throw new Error(upErr.message);
+      const { error: setErr } = await supabase.rpc('pilot_staff_set_blueprint', { p_id: r.id, p_path: path });
+      if (setErr) throw new Error(setErr.message);
+      ok++;
+    } catch (e) {
+      console.warn('[pilot] blueprint rebuild failed', r.id, e);
+      ng++;
+    }
+    onProgress?.(ok + ng, list.length);
+  }
+  return { ok, ng };
 }
 
 export async function getParticipantHistory(token: string): Promise<PilotHistoryItem[]> {

@@ -128,7 +128,12 @@ export async function detectFaceLandmarks(
   canvas.height = img.naturalHeight;
   canvas.getContext('2d')!.drawImage(img, 0, 0);
 
-  return detectGuideWith(landmarker, canvas);
+  try {
+    return detectGuideWith(landmarker, canvas);
+  } finally {
+    // iPhone は Canvas に使えるメモリが少ないので、使い終わったらすぐ返す
+    canvas.width = 0; canvas.height = 0;
+  }
 }
 
 /**

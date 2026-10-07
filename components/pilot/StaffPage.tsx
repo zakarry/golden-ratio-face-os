@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, Copy, FileSpreadsheet, LogOut, Mail, RefreshCw, Trash2, UserPlus, Users } from 'lucide-react';
 import { downloadStaffExcel } from '@/lib/pilot/staffExport';
 import {
-  deleteParticipant, getParticipantHistory, getStaffState, listParticipants, parseRoster, registerParticipants, resetLocalAuth, sendStaffLoginLink,
+  countMissingBlueprints, deleteParticipant, getParticipantHistory, getStaffState, rebuildMissingBlueprints, listParticipants, parseRoster, registerParticipants, resetLocalAuth, sendStaffLoginLink,
   staffMediaUrls, staffSignOut, updateParticipant, withTimeout,
   type ParticipantSummary, type StaffState,
 } from '@/lib/pilot/staff';
@@ -104,6 +104,7 @@ function Dashboard() {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-sm font-semibold text-stone-800 flex items-center gap-2"><Users className="w-4 h-4" /> 参加者 {total}名　<span className="text-xs font-normal text-stone-500">撮影あり {started}名・未撮影 {total - started}名</span></p>
         <div className="flex items-center gap-2">
+          <BlueprintRepair onDone={load} />
           {list && <ExcelButton list={list} />}
           <button type="button" onClick={load} className={ghostBtn}><RefreshCw className="w-3.5 h-3.5" /> 更新</button>
         </div>
@@ -166,6 +167,31 @@ function Register({ existingCodes, onDone, startOpen }: { existingCodes: string[
         {msg && <span className="text-xs text-stone-600">{msg}</span>}
       </div>
     </Card>
+  );
+}
+
+/** 設計図のない撮影があるときだけ出す「設計図を作り直す」ボタン */
+function BlueprintRepair({ onDone }: { onDone: () => void }) {
+  const [missing, setMissing] = useState(0);
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+  const check = useCallback(() => { countMissingBlueprints().then(setMissing).catch(() => setMissing(0)); }, []);
+  useEffect(() => { check(); }, [check]);
+  const run = async () => {
+    setBusy(true); setMsg('作り直しています…');
+    try {
+      const r = await rebuildMissingBlueprints((d, t) => setMsg(`作り直しています ${d}/${t}`));
+      setMsg(r.ng ? `${r.ok}件を作り直しました（${r.ng}件は作れませんでした）` : `${r.ok}件を作り直しました`);
+      check(); onDone();
+    } catch (e) { setMsg(`作り直せませんでした（${e instanceof Error ? e.message : String(e)}）`); }
+    setBusy(false);
+  };
+  if (missing === 0 && !msg) return null;
+  return (
+    <>
+      {missing > 0 && <button type="button" onClick={run} disabled={busy} className={`${ghostBtn} border-amber-300 text-amber-800`}><RefreshCw className={`w-3.5 h-3.5 ${busy ? 'animate-spin' : ''}`} /> 設計図を作り直す（{missing}件）</button>}
+      {msg && <span className="text-xs text-stone-600">{msg}</span>}
+    </>
   );
 }
 

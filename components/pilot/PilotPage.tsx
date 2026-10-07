@@ -5,7 +5,7 @@
 // 撮るたびに メイク前／メイク後 を選び、その時点の顔で設計図・顔カルテ・処方を作って記録に貯める。
 // トークンが唯一の鍵。他の人の記録や写真は、読むことも上書きすることもできない。
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Camera, CheckCircle2, AlertTriangle, RefreshCw, Copy, Save, ClipboardList, Database, Lock, ImageIcon, Download } from 'lucide-react';
 import BlueprintCanvas from '@/components/BlueprintCanvas';
 import StrengthsPanel from '@/components/StrengthsPanel';
@@ -13,7 +13,7 @@ import TriangleTypeCard from '@/components/TriangleTypeCard';
 import GoldenRatioPanel from '@/components/GoldenRatioPanel';
 import { analyzeFaceFromGuide } from '@/lib/analyzeFaceMock';
 import { buildKarteRecord, saveFaceKarteRecord } from '@/lib/karteStorage';
-import { renderBlueprintJpeg } from '@/lib/pilot/blueprintImage';
+import { releaseCanvas, renderBlueprintJpeg } from '@/lib/pilot/blueprintImage';
 import { detectFaceLandmarks, type DetectedGuide } from '@/lib/faceLandmarks';
 import { computePilotMetrics, buildTargetCard, formatMetric, type TargetCard, type PilotMetrics } from '@/lib/pilot/targetCard';
 import { buildPrescription, prescriptionToText, STRENGTH_LABEL, type Prescription, type Strength } from '@/lib/pilot/prescription';
@@ -36,7 +36,9 @@ async function toDataUrl(src: string, maxSide = 1600): Promise<{ dataUrl: string
   const s = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
   const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
   c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
-  return { dataUrl: c.toDataURL('image/jpeg', 0.85), w: c.width, h: c.height };
+  const out = { dataUrl: c.toDataURL('image/jpeg', 0.85), w: c.width, h: c.height };
+  releaseCanvas(c); // iPhone は Canvas のメモリが少ないので、使い終わったらすぐ返す
+  return out;
 }
 
 /** 入力されたURLまたはコードからトークンを取り出す */
@@ -137,7 +139,6 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
   const rx: Prescription | null = useMemo(() => card ? buildPrescription(card, strength) : null, [card, strength]);
   // 顔カルテ（「あなたの顔の設計図」と同じ解析）
   const analysis = useMemo(() => guide ? analyzeFaceFromGuide(guide) : null, [guide]);
-  const blueprintRef = useRef<HTMLDivElement>(null);
   const [blueprintUrl, setBlueprintUrl] = useState<string | null>(null);
 
   const handleImage = useCallback(async (url: string) => {
@@ -165,7 +166,9 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
     if (limitReached) { setSaveMsg(`撮影は1人${info.limit}枚までです`); return; }
     setSaveState('saving'); setSaveMsg('');
     // 顔の設計図を画像にし、顔カルテを作る（カルテはこの端末の「顔カルテ」にも残す）
-    const blueprint = await renderBlueprintJpeg(blueprintRef.current, dataUrl);
+    // 写真に線を直接描く。まれに失敗するので1回だけやり直す
+    let blueprint = await renderBlueprintJpeg(dataUrl, guide, analysis.triangleAnalysis);
+    if (!blueprint) { await new Promise(r => setTimeout(r, 400)); blueprint = await renderBlueprintJpeg(dataUrl, guide, analysis.triangleAnalysis); }
     setBlueprintUrl(blueprint);
     const karteFull = buildKarteRecord(phase === 'before' ? 'baseline' : 'dailyMakeup', analysis, {
       guide, note: `ミス・ワールドJAPAN パイロット ${info.subjectCode}（${phase === 'before' ? 'メイク前' : 'メイク後'}）`,
@@ -178,6 +181,8 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
       consent: true, isMinor: info.consentBy === 'guardian', // 同意の中身はサーバーの参加者記録を使う
       imageDataUrl: dataUrl, imageWidth: imgSize.w, imageHeight: imgSize.h, guide, metrics, targetCard: card, prescription: rx, framing,
       blueprintDataUrl: blueprint ?? undefined, karte,
+      // 設計図が作れなかったことを記録に残す（運営ページで作り直せる）
+      note: blueprint ? undefined : 'blueprint_failed',
       appVersion: PILOT_APP_VERSION, syncState: 'local',
     };
     upsertLocal(rec);
@@ -320,7 +325,7 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
           {dataUrl && analysis && (
             <Card>
               <p className="text-sm font-semibold text-stone-800">あなたの顔の設計図　<span className="text-xs font-normal text-stone-500">{phaseLabel}</span></p>
-              <div ref={blueprintRef} className="flex justify-center rounded-xl overflow-hidden bg-stone-50 border border-stone-100">
+              <div className="flex justify-center rounded-xl overflow-hidden bg-stone-50 border border-stone-100">
                 <BlueprintCanvas imageSrc={dataUrl} guide={guide} triangleAnalysis={analysis.triangleAnalysis} />
               </div>
               <p className="text-[11px] text-stone-400 leading-relaxed">評価ではなく、顔の構造を知るためのカルテです。黄金比は美しさの点数ではなく、構造を理解するための参考値です。</p>
