@@ -61,6 +61,8 @@ export interface ParticipantSummary {
   afterCount: number;
   sessions: number;
   lastAt: string | null;
+  /** 事前アンケートの回答日時（未回答なら null） */
+  surveyAt: string | null;
 }
 
 const jstDate = (iso: string) => new Date(new Date(iso).getTime() + 9 * 3600e3).toISOString().slice(0, 10);
@@ -71,6 +73,11 @@ export async function listParticipants(): Promise<ParticipantSummary[]> {
   const { data: ps, error } = await supabase.from('pilot_participants')
     .select('token, subject_code, display_name, is_minor, consented_at, consent_by').order('subject_code');
   if (error || !ps) throw new Error(error?.message ?? '読み込めませんでした');
+
+  // 事前アンケートの回答（一覧の印）
+  const { data: sv, error: svErr } = await supabase.from('pilot_survey').select('token, updated_at');
+  if (svErr) throw new Error(svErr.message);
+  const surveyAt = new Map((sv ?? []).map(s => [s.token as string, s.updated_at as string]));
 
   // 記録は最大 40名×30枚。1回の取得上限（1000行）を超えるので分けて読む
   const rows: { participant_token: string; phase: string; taken_at: string }[] = [];
@@ -92,6 +99,7 @@ export async function listParticipants(): Promise<ParticipantSummary[]> {
       afterCount: mine.filter(r => r.phase === 'after').length,
       sessions: new Set(mine.map(r => jstDate(r.taken_at))).size,
       lastAt: mine.length ? mine[mine.length - 1].taken_at : null,
+      surveyAt: surveyAt.get(p.token) ?? null,
     };
   });
 }
@@ -135,15 +143,18 @@ export async function deleteParticipant(token: string): Promise<number> {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error('Supabase 未設定');
   const bucket = supabase.storage.from('pilot-photos');
-  for (let round = 0; ; round++) {
-    const { data: files, error } = await bucket.list(token, { limit: 100 });
-    if (error) throw new Error(`写真の一覧を取得できませんでした（${error.message}）`);
-    const paths = (files ?? []).filter(f => f.id).map(f => `${token}/${f.name}`);
-    if (paths.length === 0) break;
-    const { data: removed, error: rmErr } = await bucket.remove(paths);
-    if (rmErr) throw new Error(`写真を削除できませんでした（${rmErr.message}）`);
-    // 権限がないと、エラーにならず何も消えないことがある
-    if (!removed || removed.length === 0 || round > 50) throw new Error('写真を削除できませんでした（削除の権限がない可能性があります）');
+  // 撮影の写真（token/）と、アンケートの参照写真（token/survey/）の両方を空にする
+  for (const folder of [token, `${token}/survey`]) {
+    for (let round = 0; ; round++) {
+      const { data: files, error } = await bucket.list(folder, { limit: 100 });
+      if (error) throw new Error(`写真の一覧を取得できませんでした（${error.message}）`);
+      const paths = (files ?? []).filter(f => f.id).map(f => `${folder}/${f.name}`);
+      if (paths.length === 0) break;
+      const { data: removed, error: rmErr } = await bucket.remove(paths);
+      if (rmErr) throw new Error(`写真を削除できませんでした（${rmErr.message}）`);
+      // 権限がないと、エラーにならず何も消えないことがある
+      if (!removed || removed.length === 0 || round > 50) throw new Error('写真を削除できませんでした（削除の権限がない可能性があります）');
+    }
   }
   const { data, error } = await supabase.rpc('pilot_staff_delete_participant', { p_token: token });
   if (error) throw new Error(error.message);

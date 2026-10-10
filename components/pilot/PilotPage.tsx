@@ -23,6 +23,8 @@ import {
 } from '@/lib/pilot/pilotStorage';
 import PilotHistory, { RxList } from './PilotHistory';
 import PilotCamera from './PilotCamera';
+import SurveyPage from './SurveyPage';
+import { fetchSurvey } from '@/lib/pilot/survey';
 
 type DetectState = 'idle' | 'detecting' | 'done' | 'error';
 type Age = 'adult' | 'minor' | null;
@@ -66,6 +68,16 @@ export default function PilotPage() {
 
   useEffect(() => { const t = readPilotToken(); setToken(t); load(t); }, [load]);
 
+  // 事前アンケート：参加者ページのボタン、または URL の &survey=1 で開く。送信したら参加者ページに戻る
+  const [showSurvey, setShowSurvey] = useState(false);
+  const [surveySent, setSurveySent] = useState(false);
+  useEffect(() => { if (new URLSearchParams(window.location.search).get('survey') === '1') setShowSurvey(true); }, []);
+  const closeSurvey = useCallback((sent: boolean) => {
+    setShowSurvey(false);
+    if (sent) setSurveySent(true);
+    window.scrollTo(0, 0);
+  }, []);
+
   const enterCode = useCallback((raw: string) => {
     const t = parseToken(raw); if (!t) return;
     savePilotToken(t); setToken(t); load(t);
@@ -85,12 +97,26 @@ export default function PilotPage() {
           <button type="button" onClick={() => load(token)} className={ghostBtn}><RefreshCw className="w-3.5 h-3.5" /> 再読み込み</button>
         </Card>
       )}
-      {state.kind === 'ok' && token && <Session token={token} info={state.info} onReload={() => load(token, true)} onSwitch={switchPerson} />}
+      {state.kind === 'ok' && token && showSurvey && (
+        <>
+          <button type="button" onClick={() => closeSurvey(false)} className={ghostBtn}>← 撮影の画面に戻る</button>
+          <SurveyPage token={token} onDone={() => closeSurvey(true)} />
+        </>
+      )}
+      {state.kind === 'ok' && token && !showSurvey && (
+        <Session token={token} info={state.info} onReload={() => load(token, true)} onSwitch={switchPerson}
+          onOpenSurvey={() => { setShowSurvey(true); window.scrollTo(0, 0); }} surveySent={surveySent} />
+      )}
     </div>
   );
 }
 
-function Session({ token, info, onReload, onSwitch }: { token: string; info: ParticipantInfo; onReload: () => void; onSwitch: () => void }) {
+function Session({ token, info, onReload, onSwitch, onOpenSurvey, surveySent }: {
+  token: string; info: ParticipantInfo; onReload: () => void; onSwitch: () => void; onOpenSurvey: () => void; surveySent: boolean;
+}) {
+  // 事前アンケートを送ったかどうか（ボタンの表示に使う）
+  const [surveyAt, setSurveyAt] = useState<string | null>(null);
+  useEffect(() => { let alive = true; fetchSurvey(token).then(d => { if (alive) setSurveyAt(d?.submitted_at ?? null); }); return () => { alive = false; }; }, [token, surveySent]);
   // ── 同意（1人1回。サーバーに記録するので、次回以降や別の端末では聞かない）
   const [consent, setConsentState] = useState<ConsentState>(EMPTY_CONSENT);
   const setConsent = useCallback((patch: Partial<ConsentState>) => setConsentState(prev => ({ ...prev, ...patch })), []);
@@ -226,6 +252,12 @@ function Session({ token, info, onReload, onSwitch }: { token: string; info: Par
           <button type="button" onClick={onSwitch} className="text-[11px] text-stone-400 underline">別の人のリンクで開く</button>
         </div>
         <p className="text-xs text-stone-500">これまで {sessionCount}回・{info.count}枚　／　撮影できるのは あと {Math.max(0, info.limit - used)}枚（1人{info.limit}枚まで）</p>
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <button type="button" onClick={onOpenSurvey} className={`inline-flex items-center gap-1.5 rounded-lg text-xs font-medium px-3 py-2 ${surveyAt ? 'border border-stone-200 bg-white text-stone-700' : 'bg-amber-500 text-white'}`}>
+            <ClipboardList className="w-3.5 h-3.5" /> 事前アンケート{surveyAt ? '（送信済み・修正できます）' : 'に答える'}
+          </button>
+          {surveySent && <span className="text-xs text-emerald-700">アンケートを送信しました。ありがとうございます。</span>}
+        </div>
       </Card>
 
       {/* ── 同意（初回だけ） */}

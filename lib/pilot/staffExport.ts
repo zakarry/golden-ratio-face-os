@@ -4,6 +4,7 @@
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import { METRIC_DEFS } from './targetCard';
 import { staffMediaUrls, type ParticipantSummary } from './staff';
+import { fetchAllSurveysForStaff, flattenAnswers, REFERENCE_KIND_LABEL } from './survey';
 
 /** 写真つきのとき、Excel に貼る縮小画像の大きさ（px） */
 const THUMB_W = 120, THUMB_H = 160;
@@ -171,6 +172,53 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
       }
     });
   header(s2);
+
+  // ── 事前アンケート（1人1行、質問ごとに1列）と、似ている人（1人1行）
+  const { surveys, refs } = await fetchAllSurveysForStaff();
+  const surveyOf = new Map(surveys.map(s => [s.token, s]));
+  const qCols = flattenAnswers({});
+  const s3 = wb.addWorksheet('アンケート');
+  s3.columns = [
+    { header: 'コード', key: 'code', width: 10 },
+    { header: '名前', key: 'name', width: 16 },
+    { header: '回答日', key: 'at', width: 12 },
+    ...qCols.map((q, i) => ({ header: `${q.no}. ${q.title}`, key: `q${i}`, width: 30 })),
+    ...(['self_happy', 'others_say', 'dislike'] as const).map(k => ({ header: REFERENCE_KIND_LABEL[k], key: `ref_${k}`, width: 24 })),
+  ];
+  list.forEach(p => {
+    const s = surveyOf.get(p.token);
+    const row: Record<string, unknown> = { code: p.subjectCode, name: p.name, at: s ? jstDate(s.updated_at) : '未回答' };
+    if (s) flattenAnswers(s.answers).forEach((a, i) => { row[`q${i}`] = a.answer; });
+    for (const k of ['self_happy', 'others_say', 'dislike'] as const) {
+      row[`ref_${k}`] = refs.filter(r => r.token === p.token && r.kind === k).map(r => r.person_name).join('、');
+    }
+    s3.addRow(row).alignment = { vertical: 'top', wrapText: true };
+  });
+  header(s3);
+
+  const s4 = wb.addWorksheet('似ている人');
+  s4.columns = [
+    { header: 'コード', key: 'code', width: 10 },
+    { header: '名前', key: 'name', width: 16 },
+    { header: '種類', key: 'kind', width: 18 },
+    { header: '似ている人', key: 'person', width: 18 },
+    { header: '写真のメモ', key: 'note', width: 24 },
+    { header: '写真', key: 'photo', width: 8 },
+    { header: '測定日', key: 'measured', width: 12 },
+    { header: '向き（正面0）', key: 'yaw', width: 12 },
+    ...METRIC_DEFS.map(d => ({ header: `${d.label}（黄金比 ${d.unit === '°' ? d.ideal + '°' : d.ideal.toFixed(3)}）`, key: `m_${d.id}`, width: 16 })),
+  ];
+  const nameOfToken = new Map(list.map(p => [p.token, p]));
+  [...refs].sort((a, b) => a.subject_code.localeCompare(b.subject_code)).forEach(r => {
+    const row: Record<string, unknown> = {
+      code: r.subject_code, name: nameOfToken.get(r.token)?.name ?? '', kind: REFERENCE_KIND_LABEL[r.kind], person: r.person_name,
+      note: r.source_note ?? '', photo: r.image_path ? 'あり' : '', measured: r.measured_at ? jstDate(r.measured_at) : '未測定',
+      yaw: typeof r.framing?.yaw === 'number' ? Math.round(r.framing.yaw * 1000) / 1000 : '',
+    };
+    METRIC_DEFS.forEach(d => { const v = r.metrics?.[d.id]; row[`m_${d.id}`] = typeof v === 'number' ? Math.round(v * 1000) / 1000 : ''; });
+    s4.addRow(row);
+  });
+  header(s4);
 
   const buf = await wb.xlsx.writeBuffer();
   const a = document.createElement('a');

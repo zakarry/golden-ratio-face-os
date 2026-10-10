@@ -13,6 +13,7 @@ import {
 } from '@/lib/pilot/staff';
 import type { PilotHistoryItem } from '@/lib/pilot/pilotStorage';
 import PilotHistory from './PilotHistory';
+import StaffSurvey from './StaffSurvey';
 import StaffCaptures from './StaffCaptures';
 
 const fmt = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', timeZone: 'Asia/Tokyo' }) : '—';
@@ -120,13 +121,14 @@ function Dashboard() {
       {list && view === 'people' && (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
-            <thead><tr className="text-stone-400 text-[10px] text-left"><th className="py-1">コード</th><th>名前</th><th>未成年</th><th>同意</th><th className="text-right">回</th><th className="text-right">枚（前/後）</th><th className="text-right">最終</th><th /></tr></thead>
+            <thead><tr className="text-stone-400 text-[10px] text-left"><th className="py-1">コード</th><th>名前</th><th>未成年</th><th>同意</th><th>アンケート</th><th className="text-right">回</th><th className="text-right">枚（前/後）</th><th className="text-right">最終</th><th /></tr></thead>
             <tbody>{list.map(p => (
               <tr key={p.token} onClick={() => setSelected(p)} className={`border-t border-stone-100 cursor-pointer hover:bg-amber-50/60 ${p.count === 0 ? 'text-stone-400' : 'text-stone-800'}`}>
                 <td className="py-2 font-semibold">{p.subjectCode}</td>
                 <td>{p.name}</td>
                 <td>{p.isMinor ? '未成年' : ''}</td>
                 <td>{p.consentedAt ? (p.consentBy === 'guardian' ? '保護者' : '本人') : <span className="text-amber-700">未</span>}</td>
+                <td>{p.surveyAt ? <span className="text-emerald-700">済</span> : <span className="text-stone-300">未</span>}</td>
                 <td className="text-right tabular-nums">{p.sessions}</td>
                 <td className="text-right tabular-nums">{p.count}（{p.beforeCount}/{p.afterCount}）</td>
                 <td className="text-right">{fmt(p.lastAt)}</td>
@@ -238,6 +240,8 @@ function Detail({ p, onBack }: { p: ParticipantSummary; onBack: () => void }) {
         <CopyLink token={p.token} />
       </div>
       <EditParticipant p={p} />
+      {/* 事前アンケート（本人の最新の「メイク前」と参照写真を並べる） */}
+      <StaffSurvey token={p.token} subjectMetrics={history ? ([...history].reverse().find(h => h.phase === 'before')?.metrics ?? null) : null} />
       {error && <p className="text-xs text-rose-700">{error}</p>}
       {!history && !error && <p className="text-xs text-stone-400">読み込んでいます…</p>}
       {history && <PilotHistory history={history} getUrls={staffMediaUrls} showPhotos />}
