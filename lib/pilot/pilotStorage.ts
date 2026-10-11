@@ -283,8 +283,8 @@ export const FRAMING_LIMITS = {
   /** 視線：黒目の中心が目頭〜目尻のこの範囲（両目とも） */
   gazeMin: 0.4,
   gazeMax: 0.6,
-  /** 目の開き：縦幅÷横幅がこれ以上（両目とも） */
-  eyeOpenMin: 0.25,
+  /** 目の開き：縦幅÷横幅がこれ以上（両目とも）。目を大きく見せるためではなく、まばたき・半目・下を見て瞼が下がった状態だけを止める値 */
+  eyeOpenMin: 0.18,
 } as const;
 
 export type FramingIssue = 'yaw' | 'roll' | 'small' | 'large' | 'gaze' | 'eyeOpen';
@@ -296,7 +296,7 @@ export const FRAMING_HINT: Record<FramingIssue, string> = {
   small: '近づいて',
   large: '少し離れて',
   gaze: 'レンズを見てください',
-  eyeOpen: '目をしっかり開けてください',
+  eyeOpen: 'レンズを見てください',
 };
 
 export function measureFraming(g: DetectedGuide, imageW: number, imageH: number) {
@@ -338,7 +338,7 @@ export function checkFraming(g: DetectedGuide, imageW: number, imageH: number): 
     small: '顔が小さすぎます。もう少し近づいてください',
     large: '顔が大きすぎます。少し離れてください',
     gaze: '視線がそれています。カメラのレンズを見てください',
-    eyeOpen: '目が細くなっています。目をしっかり開けてください',
+    eyeOpen: 'まばたきか、視線が下がっています。カメラのレンズを見てください',
   })[i]);
   return { yaw, roll, faceWidthFrac, gaze, eyeOpen, ok: warnings.length === 0, warnings };
 }
