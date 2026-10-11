@@ -123,7 +123,7 @@ function ReferenceRow({ r, subjectMetrics, onSaved }: { r: StaffReferenceRow; su
           <div className="flex flex-wrap items-center gap-2">
             <input value={note} onChange={e => setNote(e.target.value)} placeholder="写真の出典・年（例：2024年 雑誌）" className="rounded-lg border border-stone-200 px-2 py-1.5 text-xs w-64" />
             <label className="flex items-center gap-1 text-stone-600"><input type="checkbox" checked={clearImage} onChange={e => setClearImage(e.target.checked)} /> 保存したら写真を消す</label>
-            <button type="button" onClick={save} disabled={busy} className={`${btn} bg-stone-800 text-white border-stone-800`}><Save className="w-3.5 h-3.5" /> 保存</button>
+            <button type="button" onClick={save} disabled={busy} className={saveBtn}><Save className="w-3.5 h-3.5" /> {busy ? '保存中…' : '保存'}</button>
           </div>
         </div>
       )}
@@ -156,3 +156,5 @@ function CompareTable({ subject, ref_ }: { subject: PilotMetrics | null; ref_: P
 }
 
 const btn = 'inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white text-stone-700 text-xs px-3 py-1.5 disabled:opacity-40';
+// 白地のボタンの色を上書きすると文字が消えるので、保存ボタンは別に定義する
+const saveBtn = 'inline-flex items-center gap-1.5 rounded-lg border border-stone-800 bg-stone-800 text-white text-xs font-semibold px-4 py-1.5 disabled:opacity-40';
