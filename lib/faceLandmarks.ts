@@ -37,6 +37,11 @@ export interface DetectedGuide {
   irisDiameterPx?: number;
   imageWidth?: number;
   imageHeight?: number;
+  // Eyelid centers (upper / lower) for eye openness: lm 159/145 (image-left eye), 386/374 (image-right eye)
+  leftEyeTopY?: number;
+  leftEyeBottomY?: number;
+  rightEyeTopY?: number;
+  rightEyeBottomY?: number;
 }
 
 // ─── Landmark index sets ─────────────────────────────────────────────────────
@@ -242,6 +247,10 @@ function detectGuideWith(landmarker: FaceLandmarker, canvas: HTMLCanvasElement):
     leftEyeInnerY:   lm[133].y,
     rightEyeInnerY:  lm[362].y,
     rightEyeOuterY:  lm[263].y,
+    leftEyeTopY:     lm[159].y,
+    leftEyeBottomY:  lm[145].y,
+    rightEyeTopY:    lm[386].y,
+    rightEyeBottomY: lm[374].y,
     irisDiameterPx,
     imageWidth:      canvas.width,
     imageHeight:     canvas.height,

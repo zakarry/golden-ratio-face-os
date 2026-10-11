@@ -17,8 +17,12 @@ export interface FramingCheck {
   yaw: number;
   /** 度。±3° 以内が目安 */
   roll: number;
-  /** 画像幅に対する顔幅。0.25 以上が目安 */
+  /** 画像幅に対する顔幅（FRAMING_LIMITS の範囲） */
   faceWidthFrac: number;
+  /** 視線：黒目の中心の位置（目頭0〜目尻1）。左右それぞれ。黒目が取れないときは無し */
+  gaze?: { left: number; right: number };
+  /** 目の開き：縦幅（上瞼〜下瞼）÷ 横幅（目頭〜目尻）。左右それぞれ */
+  eyeOpen?: { left: number; right: number };
   ok: boolean;
   warnings: string[];
 }
@@ -276,9 +280,14 @@ export const FRAMING_LIMITS = {
   /** 画像幅に対する顔幅 */
   faceMin: 0.38,
   faceMax: 0.62,
+  /** 視線：黒目の中心が目頭〜目尻のこの範囲（両目とも） */
+  gazeMin: 0.4,
+  gazeMax: 0.6,
+  /** 目の開き：縦幅÷横幅がこれ以上（両目とも） */
+  eyeOpenMin: 0.25,
 } as const;
 
-export type FramingIssue = 'yaw' | 'roll' | 'small' | 'large';
+export type FramingIssue = 'yaw' | 'roll' | 'small' | 'large' | 'gaze' | 'eyeOpen';
 
 /** 撮影中のガイドに出す短い言葉 */
 export const FRAMING_HINT: Record<FramingIssue, string> = {
@@ -286,6 +295,8 @@ export const FRAMING_HINT: Record<FramingIssue, string> = {
   roll: '傾いています',
   small: '近づいて',
   large: '少し離れて',
+  gaze: 'レンズを見てください',
+  eyeOpen: '目をしっかり開けてください',
 };
 
 export function measureFraming(g: DetectedGuide, imageW: number, imageH: number) {
@@ -299,16 +310,35 @@ export function measureFraming(g: DetectedGuide, imageW: number, imageH: number)
   if (Math.abs(roll) > FRAMING_LIMITS.roll) issues.push('roll');
   if (faceWidthFrac < FRAMING_LIMITS.faceMin) issues.push('small');
   if (faceWidthFrac > FRAMING_LIMITS.faceMax) issues.push('large');
-  return { yaw, roll, faceWidthFrac, issues };
+
+  // 視線：黒目の中心が目頭(0)〜目尻(1)のどこにあるか。0.40〜0.60 から外れたら横を見ている
+  const X = (v: number) => v * imageW, Y = (v: number) => v * imageH;
+  const along = (p: number, inner: number, outer: number) => (X(p) - X(inner)) / (X(outer) - X(inner));
+  const gaze = { left: along(g.leftPupilX, g.leftEyeInnerX, g.leftEyeOuterX), right: along(g.rightPupilX, g.rightEyeInnerX, g.rightEyeOuterX) };
+  if ([gaze.left, gaze.right].some(v => !(v >= FRAMING_LIMITS.gazeMin && v <= FRAMING_LIMITS.gazeMax))) issues.push('gaze');
+
+  // 目の開き：縦幅（上瞼〜下瞼）÷ 横幅（目頭〜目尻）。瞼の点がない古い記録では判定しない
+  let eyeOpen: { left: number; right: number } | undefined;
+  if (g.leftEyeTopY != null && g.leftEyeBottomY != null && g.rightEyeTopY != null && g.rightEyeBottomY != null) {
+    const width = (ix: number, iy: number | undefined, ox: number, oy: number | undefined) => Math.hypot(X(ox) - X(ix), Y(oy ?? 0) - Y(iy ?? 0));
+    eyeOpen = {
+      left: Math.abs(Y(g.leftEyeBottomY) - Y(g.leftEyeTopY)) / width(g.leftEyeInnerX, g.leftEyeInnerY, g.leftEyeOuterX, g.leftEyeOuterY),
+      right: Math.abs(Y(g.rightEyeBottomY) - Y(g.rightEyeTopY)) / width(g.rightEyeInnerX, g.rightEyeInnerY, g.rightEyeOuterX, g.rightEyeOuterY),
+    };
+    if (Math.min(eyeOpen.left, eyeOpen.right) < FRAMING_LIMITS.eyeOpenMin) issues.push('eyeOpen');
+  }
+  return { yaw, roll, faceWidthFrac, gaze, eyeOpen, issues };
 }
 
 export function checkFraming(g: DetectedGuide, imageW: number, imageH: number): FramingCheck {
-  const { yaw, roll, faceWidthFrac, issues } = measureFraming(g, imageW, imageH);
+  const { yaw, roll, faceWidthFrac, gaze, eyeOpen, issues } = measureFraming(g, imageW, imageH);
   const warnings = issues.map(i => ({
     yaw: yaw > 0 ? '顔が少し左を向いています（本人の右側が見えすぎ）。正面へ' : '顔が少し右を向いています。正面へ',
     roll: `顔が${Math.abs(roll).toFixed(0)}°傾いています。目の高さを水平に`,
     small: '顔が小さすぎます。もう少し近づいてください',
     large: '顔が大きすぎます。少し離れてください',
+    gaze: '視線がそれています。カメラのレンズを見てください',
+    eyeOpen: '目が細くなっています。目をしっかり開けてください',
   })[i]);
-  return { yaw, roll, faceWidthFrac, ok: warnings.length === 0, warnings };
+  return { yaw, roll, faceWidthFrac, gaze, eyeOpen, ok: warnings.length === 0, warnings };
 }
