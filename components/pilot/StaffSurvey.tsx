@@ -71,7 +71,9 @@ function ReferenceRow({ r, subjectMetrics, onSaved }: { r: StaffReferenceRow; su
 
   useEffect(() => {
     let alive = true;
-    if (r.image_path) signedUrl(r.image_path).then(u => { if (alive) setUrl(u); });
+    // 写真を消して保存したあとは image_path が空になるので、表示中の写真も片づける
+    if (!r.image_path) { setUrl(null); return; }
+    signedUrl(r.image_path).then(u => { if (alive) setUrl(u); });
     return () => { alive = false; };
   }, [r.image_path]);
 
