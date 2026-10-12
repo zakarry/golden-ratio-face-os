@@ -17,7 +17,7 @@ import { detectFaceLandmarks, type DetectedGuide } from '@/lib/faceLandmarks';
 import { computePilotMetrics, buildTargetCard, formatMetric, SMARTPHONE_CORRECTIONS, SMARTPHONE_NOTE, type TargetCard, type PilotMetrics } from '@/lib/pilot/targetCard';
 import { buildPrescription, prescriptionToText, STRENGTH_LABEL, type Prescription, type Strength } from '@/lib/pilot/prescription';
 import {
-  checkFraming, fetchOwnMediaUrls, forgetPilotToken, getPilotRecords, lookupParticipant, newPilotId, readPilotToken, recordConsent, resyncPending,
+  checkFraming, retakeReason, fetchOwnMediaUrls, forgetPilotToken, getPilotRecords, lookupParticipant, newPilotId, readPilotToken, recordConsent, resyncPending,
   savePilotToken, syncPilotRecord, upsertLocal, PILOT_APP_VERSION, type FramingCheck, type ParticipantInfo, type PilotPhase, type PilotRecord,
 } from '@/lib/pilot/pilotStorage';
 import PilotHistory, { RxList } from './PilotHistory';
@@ -243,9 +243,19 @@ function Session({ token, info, onReload, onSwitch, onOpenSurvey, surveySent }: 
   // メイク後を撮るときに見返す処方＝いちばん新しいメイク前の処方
   const beforeRx = useMemo(() => [...info.history].reverse().find(h => h.phase === 'before')?.prescription ?? null, [info.history]);
   const sessionCount = useMemo(() => new Set(info.history.map(h => h.sessionDate)).size, [info.history]);
+  // 運営ページで「要撮り直し」になっている人へのお願い（条件を満たす写真が入れば消える）
+  const retake = useMemo(() => retakeReason(info.history), [info.history]);
 
   return (
     <>
+      {/* ── 撮り直しのお願い */}
+      {retake && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 flex gap-2">
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+          <p>撮り直しをお願いします：{retake}。新しいガイドで、メイク前を一枚撮ってください。</p>
+        </div>
+      )}
+
       {/* ── 本人 */}
       <Card>
         <div className="flex items-center justify-between gap-3">

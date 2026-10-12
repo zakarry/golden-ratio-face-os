@@ -299,6 +299,16 @@ export function pitchInRange(p: number | undefined | null) {
   return p != null && p >= FRAMING_LIMITS.pitchMin && p <= FRAMING_LIMITS.pitchMax;
 }
 
+/**
+ * 撮り直しのお願い（運営ページの「要撮り直し」と同じ条件）。理由の文、無ければ null。
+ * 写り○のメイク前はあるのに、傾き 8〜20° の写真が1枚もないとき。条件を満たす写真が入れば自然に消える
+ */
+export function retakeReason(records: { phase: string; framing: { ok?: boolean; pitch?: number } | null }[]): string | null {
+  const okBefore = records.filter(r => r.phase === 'before' && r.framing?.ok === true);
+  if (okBefore.length > 0 && !okBefore.some(r => pitchInRange(r.framing?.pitch))) return '顔の上下の角度（スマホの高さ）がずれていました';
+  return null;
+}
+
 export type FramingIssue = 'yaw' | 'roll' | 'small' | 'large' | 'gaze' | 'eyeOpen' | 'pitchHigh' | 'pitchLow';
 
 /** 撮影中のガイドに出す短い言葉 */
