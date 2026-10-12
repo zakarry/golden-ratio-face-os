@@ -16,6 +16,7 @@ import PilotHistory from './PilotHistory';
 import StaffSurvey from './StaffSurvey';
 import StaffYosekata from './StaffYosekata';
 import StaffCaptures from './StaffCaptures';
+import StaffAnalysis from './StaffAnalysis';
 
 const fmt = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', timeZone: 'Asia/Tokyo' }) : '—';
 
@@ -86,7 +87,7 @@ function Dashboard() {
   const [list, setList] = useState<ParticipantSummary[] | null>(null);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<ParticipantSummary | null>(null);
-  const [view, setView] = useState<'people' | 'captures'>('people');
+  const [view, setView] = useState<'people' | 'captures' | 'analysis'>('people');
 
   const load = useCallback(async () => {
     setError('');
@@ -112,13 +113,14 @@ function Dashboard() {
         </div>
       </div>
       <div className="flex rounded-lg border border-stone-300 overflow-hidden divide-x divide-stone-300 w-fit text-xs">
-        {([['people', '参加者一覧'], ['captures', '撮影ごと（写真つき）']] as const).map(([v, l]) => (
+        {([['people', '参加者一覧'], ['captures', '撮影ごと（写真つき）'], ['analysis', '分析']] as const).map(([v, l]) => (
           <button key={v} type="button" onClick={() => setView(v)} className={`px-4 py-2 font-medium ${view === v ? 'bg-stone-800 text-white' : 'bg-stone-50 text-stone-700'}`}>{l}</button>
         ))}
       </div>
       {error && <p className="text-xs text-rose-700">{error}</p>}
       {!list && !error && <p className="text-xs text-stone-400">読み込んでいます…</p>}
       {list && view === 'captures' && <StaffCaptures list={list} onOpenPerson={setSelected} />}
+      {list && view === 'analysis' && <StaffAnalysis list={list} />}
       {list && view === 'people' && (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
