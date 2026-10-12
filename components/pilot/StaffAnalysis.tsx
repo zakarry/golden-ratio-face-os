@@ -102,7 +102,7 @@ function TriangleScatter({ subjects, refs }: { subjects: Subject[]; refs: StaffR
     return { r, x: v.eyeDist, y: v.triH, owner: byToken.get(r.token)! };
   });
 
-  const W = 820, H = 560, L = 64, R = 24, T = 40, B = 56;
+  const W = 820, H = 580, L = 64, R = 24, T = 60, B = 56;
   const xs = [...subjects.map(s => s.base), ...refPts.map(p => p.x), ideal.x];
   const ys = [...subjects.map(s => s.height), ...refPts.map(p => p.y), ideal.y];
   const pad = (lo: number, hi: number) => { const d = (hi - lo) || 0.05; return [lo - d * 0.12, hi + d * 0.12]; };
@@ -110,6 +110,17 @@ function TriangleScatter({ subjects, refs }: { subjects: Subject[]; refs: StaffR
   const [y0, y1] = pad(Math.min(...ys), Math.max(...ys));
   const X = (v: number) => L + (v - x0) / (x1 - x0) * (W - L - R);
   const Y = (v: number) => H - B - (v - y0) / (y1 - y0) * (H - T - B);
+  // コードのラベルが重ならないよう、右上→右下→左上→左下→さらに上下の順に空いている位置を選ぶ
+  const placed: { x: number; y: number; w: number; h: number }[] = [];
+  const hit = (b: { x: number; y: number; w: number; h: number }) => placed.some(o => b.x < o.x + o.w && o.x < b.x + b.w && b.y < o.y + o.h && o.y < b.y + b.h);
+  const labelPos = new Map(subjects.map(s => {
+    const cx = X(s.base), cy = Y(s.height), w = s.p.subjectCode.length * 6.4 + 2, h = 11;
+    const cands = [[7, -6], [7, 13], [-7 - w, -6], [-7 - w, 13], [7, -18], [7, 25], [-7 - w, -18], [-7 - w, 25]];
+    let pick = cands[0];
+    for (const c of cands) { const b = { x: cx + c[0], y: cy + c[1] - 9, w, h }; if (!hit(b)) { pick = c; break; } }
+    placed.push({ x: cx + pick[0], y: cy + pick[1] - 9, w, h });
+    return [s.p.token, { x: cx + pick[0], y: cy + pick[1] }] as const;
+  }));
   const ticks = (a: number, b: number) => { const n = 6, st = (b - a) / n; return Array.from({ length: n + 1 }, (_, i) => a + st * i); };
 
   return (
@@ -140,20 +151,20 @@ function TriangleScatter({ subjects, refs }: { subjects: Subject[]; refs: StaffR
           {subjects.map(s => (
             <g key={s.p.token}>
               <circle cx={X(s.base)} cy={Y(s.height)} r={5} fill={s.test ? GRAY : INK} />
-              <text x={X(s.base) + 7} y={Y(s.height) - 6} fontSize={10} fontWeight={600} fill={s.test ? GRAY : INK}>{s.p.subjectCode}</text>
+              <text x={labelPos.get(s.p.token)!.x} y={labelPos.get(s.p.token)!.y} fontSize={10} fontWeight={600} fill={s.test ? GRAY : INK}>{s.p.subjectCode}</text>
             </g>
           ))}
           <circle cx={X(ideal.x)} cy={Y(ideal.y)} r={7} fill={IDEAL} />
           <text x={X(ideal.x) + 10} y={Y(ideal.y) + 14} fontSize={11} fontWeight={700} fill={IDEAL}>黄金比</text>
-          {/* 凡例 */}
-          <g transform={`translate(${W - R - 210}, ${T + 4})`}>
-            <rect width={206} height={82} fill="#ffffff" stroke="#e7e5e4" rx={6} />
-            <circle cx={14} cy={14} r={5} fill={INK} /><text x={26} y={18} fontSize={10} fill={INK}>参加者</text>
-            <circle cx={90} cy={14} r={5} fill={GRAY} /><text x={102} y={18} fontSize={10} fill={GRAY}>テスト</text>
+          {/* 凡例（点に重ならないよう、図の外の上に横並び） */}
+          <g transform={`translate(${L}, 40)`}>
+            <circle cx={6} cy={0} r={5} fill={INK} /><text x={16} y={4} fontSize={10} fill={INK}>参加者</text>
+            <circle cx={66} cy={0} r={5} fill={GRAY} /><text x={76} y={4} fontSize={10} fill={GRAY}>テスト</text>
+            <circle cx={126} cy={0} r={6} fill={IDEAL} /><text x={136} y={4} fontSize={10} fill={IDEAL}>黄金比</text>
             {(['self_happy', 'others_say', 'dislike'] as const).map((k, i) => (
-              <g key={k} transform={`translate(0, ${32 + i * 16})`}>
-                <rect x={9.5} y={-4.5} width={9} height={9} transform="rotate(45 14 0)" fill="#ffffff" stroke={KIND_COLOR[k]} strokeWidth={1.8} />
-                <text x={26} y={4} fontSize={10} fill={KIND_COLOR[k]}>{REFERENCE_KIND_LABEL[k]}</text>
+              <g key={k} transform={`translate(${186 + i * 130}, 0)`}>
+                <rect x={1.5} y={-4.5} width={9} height={9} transform="rotate(45 6 0)" fill="#ffffff" stroke={KIND_COLOR[k]} strokeWidth={1.8} />
+                <text x={16} y={4} fontSize={10} fill={KIND_COLOR[k]}>{REFERENCE_KIND_LABEL[k]}</text>
               </g>
             ))}
           </g>
