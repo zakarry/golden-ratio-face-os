@@ -9,7 +9,9 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Download, RefreshCw } from 'lucide-react';
-import type { ParticipantSummary } from '@/lib/pilot/staff';
+import { staffMediaUrls, type ParticipantSummary } from '@/lib/pilot/staff';
+import { getSupabaseClient } from '@/lib/supabaseClient';
+import { detectFaceLandmarksWithRaw } from '@/lib/faceLandmarks';
 import { fetchCaptures, jstDate, type CaptureRow } from '@/lib/pilot/staffExport';
 import { fetchAllSurveysForStaff, REFERENCE_KIND_LABEL, type ReferenceKind, type StaffReferenceRow } from '@/lib/pilot/survey';
 import { METRIC_DEFS, formatMetric, correctedValue, SMARTPHONE_CORRECTIONS, SMARTPHONE_NOTE, type MetricDef, type MetricId, type PilotMetrics } from '@/lib/pilot/targetCard';
@@ -88,6 +90,7 @@ export default function StaffAnalysis({ list }: { list: ParticipantSummary[] }) 
           <BundleTable subjects={subjects} />
           <YearCompare subjects={subjects.filter(x => !x.test)} />
           <DistanceScatter captures={captures} list={list} testMode={testMode} />
+          <NoseTrial captures={captures} list={list} />
         </>
       )}
     </div>
@@ -297,7 +300,7 @@ interface Row2025 { id: string; phase: 'before' | 'after'; ok: boolean; faceWidt
 function YearCompare({ subjects }: { subjects: Subject[] }) {
   const [y2025, setY2025] = useState<Row2025[] | null>(null);
   const refs = useRef<Record<string, SVGSVGElement | null>>({});
-  useEffect(() => { import('@/data/mw2025_metrics.json').then(m => setY2025(m.default as unknown as Row2025[])); }, []);
+  useEffect(() => { import('@/data/mw2025_metrics_v2.json').then(m => setY2025(m.default as unknown as Row2025[])); }, []);
   if (!y2025) return null;
   const groups = [
     { label: '2026 今回（スマホ）', smartphone: true, vals: (id: MetricId) => subjects.map(x => x.metrics[id]) },
@@ -306,7 +309,7 @@ function YearCompare({ subjects }: { subjects: Subject[] }) {
   ];
   const save = (d: MetricDef) => saveSvgPng(refs.current[d.id] ?? null, `分析_去年比較_${d.label.replace(/（.*?）/g, '')}.png`);
   return (
-    <Panel title="4. 去年との比較" sub={`同じ指標を3つの組で並べる。青の点線＝その組の中央値、赤線＝黄金比、灰色の帯＝許容幅。スマホの2組の目間距離は${SMARTPHONE_NOTE}つき（スタジオは補正なし）`}
+    <Panel title="4. 去年との比較" sub={`同じ指標を3つの組で並べる。去年の値は今のアプリの計算で測り直したもの（同じ定義）。青の点線＝その組の中央値、赤線＝黄金比、灰色の帯＝許容幅。スマホの2組の目間距離は${SMARTPHONE_NOTE}つき（スタジオは補正なし）`}
       onSave={async () => { for (const d of METRIC_DEFS) await save(d); }} saveLabel="12枚とも保存">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {METRIC_DEFS.map(d => (
@@ -439,6 +442,142 @@ function DistanceScatter({ captures, list, testMode }: { captures: CaptureRow[];
   );
 }
 
+// ── 6. 鼻の点の試算（保存写真から再検出。本番の定義は変えない） ──────────────
+
+type NoseDef = 'alar' | 'lm2' | 'lm94';
+const NOSE_DEFS: { key: NoseDef; label: string }[] = [
+  { key: 'alar', label: '今（小鼻 98・327）' },
+  { key: 'lm2', label: '鼻柱の付け根（目印2）' },
+  { key: 'lm94', label: '鼻柱の付け根（目印94）' },
+];
+
+interface NoseRec { code: string; phase: string; takenAt: string; ok: boolean; test: boolean; v: Record<string, number> }
+
+function noseValues(px: { brow: number; eye: number; lip: number; chin: number; faceW: number }, noses: Record<NoseDef, number>) {
+  const v: Record<string, number> = {};
+  for (const d of NOSE_DEFS) {
+    const n = noses[d.key];
+    v[`philtrum_${d.key}`] = (px.lip - n) / (px.chin - n);
+    v[`midlow_${d.key}`] = (n - px.brow) / (px.chin - n);
+    v[`noseFromEye_${d.key}`] = (n - px.eye) / px.faceW;
+  }
+  return v;
+}
+
+function summarizeNose(rows: { v: Record<string, number> }[]) {
+  const out: Record<string, { n: number; ptMed: number | null; ptOut: number; mlMed: number | null; mlOut: number }> = {};
+  for (const d of NOSE_DEFS) {
+    const pt = rows.map(r => r.v[`philtrum_${d.key}`]).filter(isFinite), ml = rows.map(r => r.v[`midlow_${d.key}`]).filter(isFinite);
+    out[d.key] = { n: pt.length, ptMed: median(pt), ptOut: pt.filter(x => Math.abs(x - 1 / 3) > 0.04).length, mlMed: median(ml), mlOut: ml.filter(x => Math.abs(x - 1) > 0.10).length };
+  }
+  return out;
+}
+
+/** 同じ人・同じ段階・同じ日の続けて撮った写真どうしの差（小さいほど安定） */
+function stabilityNose(recs: NoseRec[]) {
+  const groups = new Map<string, NoseRec[]>();
+  for (const r of recs) { const k = `${r.code}|${r.phase}|${jstDate(r.takenAt)}`; groups.set(k, [...(groups.get(k) ?? []), r]); }
+  const out: Record<string, { pairs: number; nose: number | null; pt: number | null }> = {};
+  for (const d of NOSE_DEFS) {
+    const dn: number[] = [], dp: number[] = [];
+    for (const g of Array.from(groups.values())) for (let i = 1; i < g.length; i++) {
+      dn.push(Math.abs(g[i].v[`noseFromEye_${d.key}`] - g[i - 1].v[`noseFromEye_${d.key}`]));
+      dp.push(Math.abs(g[i].v[`philtrum_${d.key}`] - g[i - 1].v[`philtrum_${d.key}`]));
+    }
+    out[d.key] = { pairs: dn.length, nose: median(dn), pt: median(dp) };
+  }
+  return out;
+}
+
+function NoseTrial({ captures, list }: { captures: CaptureRow[]; list: ParticipantSummary[] }) {
+  const [state, setState] = useState<'idle' | 'running' | 'done'>('idle');
+  const [progress, setProgress] = useState('');
+  const [recs, setRecs] = useState<NoseRec[] | null>(null);
+  const [y2025, setY2025] = useState<Row2025[] | null>(null);
+  const [saveMsg, setSaveMsg] = useState('');
+  useEffect(() => { import('@/data/mw2025_metrics_v2.json').then(m => setY2025(m.default as unknown as Row2025[])); }, []);
+  const codeOf = new Map(list.map(p => [p.token, p.subjectCode]));
+  const targets = captures.filter(c => c.image_path && codeOf.has(c.participant_token));
+
+  const run = async () => {
+    setState('running'); setSaveMsg('');
+    const out: NoseRec[] = [];
+    for (let i = 0; i < targets.length; i += 40) {
+      const chunk = targets.slice(i, i + 40);
+      const urls = await staffMediaUrls(chunk.map(c => c.image_path!));
+      for (const c of chunk) {
+        setProgress(`${out.length + 1} / ${targets.length}`);
+        const url = urls[c.image_path!];
+        if (!url) continue;
+        try {
+          const r = await detectFaceLandmarksWithRaw(url, [2, 94]);
+          if (!r) continue;
+          const g = r.guide, w = g.imageWidth!, h = g.imageHeight!;
+          const code = codeOf.get(c.participant_token)!;
+          out.push({
+            code, phase: c.phase, takenAt: c.taken_at, ok: c.framing?.ok === true, test: TEST_CODES.has(code.toUpperCase()),
+            v: noseValues({ brow: g.eyebrowLineY * h, eye: g.eyeLineY * h, lip: g.lipLineY * h, chin: g.chinLineY * h, faceW: (g.faceRightX - g.faceLeftX) * w },
+              { alar: g.noseBaseLineY * h, lm2: r.rawY[2], lm94: r.rawY[94] }),
+          });
+        } catch { /* 読めない写真は飛ばす */ }
+      }
+    }
+    setRecs(out); setState('done'); setProgress(`${out.length} / ${targets.length} 枚を測りました`);
+    // 数値だけを残す（写真は入れない）。名前も入れない
+    const latest = latestOkBefore(out.filter(r => !r.test));
+    const result = {
+      version: 1, measured: out.length, total: targets.length,
+      y2026_latestOkBefore: summarizeNose(latest), y2026_all: summarizeNose(out.filter(r => !r.test)), stability2026: stabilityNose(out.filter(r => !r.test)),
+      records: out.map(r => ({ code: r.code, phase: r.phase, takenAt: r.takenAt, ok: r.ok, test: r.test, ...Object.fromEntries(Object.entries(r.v).map(([k, x]) => [k, Math.round(x * 1e5) / 1e5])) })),
+    };
+    const supabase = getSupabaseClient();
+    const { error } = supabase ? await supabase.rpc('pilot_staff_save_analysis', { p_kind: 'nose_point_trial', p_result: result }) : { error: { message: 'Supabase 未設定' } };
+    setSaveMsg(error ? `結果を保存できませんでした（${error.message}）` : '結果を保存しました（数値だけ）');
+  };
+
+  const rows2025 = (ph: 'before' | 'after') => (y2025 ?? []).filter(r => r.phase === ph && r.ok && typeof r.philtrum_lm2 === 'number').map(r => ({ v: r as unknown as Record<string, number> }));
+  const groups = [
+    ...(recs ? [{ label: '2026 今回（各自の写り○の最新のメイク前）', s: summarizeNose(latestOkBefore(recs.filter(r => !r.test))) }, { label: '2026 今回（全記録・テスト除く）', s: summarizeNose(recs.filter(r => !r.test)) }] : []),
+    ...(y2025 ? [{ label: '2025 説明会（スマホ）', s: summarizeNose(rows2025('before')) }, { label: '2025 スタジオ', s: summarizeNose(rows2025('after')) }] : []),
+  ];
+  const stab = recs ? stabilityNose(recs.filter(r => !r.test)) : null;
+  const f3 = (v: number | null) => v == null ? '—' : v.toFixed(3);
+
+  return (
+    <Panel title="6. 鼻の点の試算（保存写真から再検出）" sub="人中比と中顔面÷下顔面を、鼻の点を3通りにして測り直す。本番の定義は変えない。範囲外＝人中比は 1/3±0.04、中顔面÷下顔面は 1±0.10"
+      onSave={() => {}} saveLabel="">
+      <div className="flex items-center gap-3 flex-wrap text-xs">
+        <button type="button" onClick={run} disabled={state === 'running' || targets.length === 0} className={ghostBtn}>{state === 'running' ? '測っています…' : `試算する（${targets.length}枚）`}</button>
+        <span className="text-stone-500">{progress}</span>
+        {saveMsg && <span className="text-stone-600">{saveMsg}</span>}
+      </div>
+      {groups.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="text-xs min-w-full">
+            <thead><tr className="text-stone-400 text-[10px] text-left"><th className="py-1 px-2">組</th>{NOSE_DEFS.map(d => <th key={d.key} className="px-2">{d.label}<br />人中比（範囲外）／中顔面÷下顔面（範囲外）</th>)}</tr></thead>
+            <tbody>{groups.map(g => (
+              <tr key={g.label} className="border-t border-stone-100">
+                <td className="py-1.5 px-2 whitespace-nowrap text-stone-700">{g.label}<span className="text-stone-400 ml-1">n={g.s.alar.n}</span></td>
+                {NOSE_DEFS.map(d => <td key={d.key} className="px-2 tabular-nums whitespace-nowrap">{f3(g.s[d.key].ptMed)}（{g.s[d.key].ptOut}）／{f3(g.s[d.key].mlMed)}（{g.s[d.key].mlOut}）</td>)}
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+      {stab && (
+        <p className="text-[11px] text-stone-500">安定性（同じ人・同じ日に続けて撮った写真どうしの差の中央値、{stab.alar.pairs}組）：
+          {NOSE_DEFS.map(d => ` ${d.label} 鼻の位置 ${stab[d.key].nose?.toFixed(4) ?? '—'}・人中比 ${stab[d.key].pt?.toFixed(4) ?? '—'}`).join('／')}</p>
+      )}
+    </Panel>
+  );
+}
+
+function latestOkBefore(recs: NoseRec[]) {
+  const by = new Map<string, NoseRec>();
+  for (const r of recs) if (r.phase === 'before' && r.ok) { const cur = by.get(r.code); if (!cur || cur.takenAt < r.takenAt) by.set(r.code, r); }
+  return Array.from(by.values());
+}
+
 // ── 共通 ───────────────────────────────────────────────────────────
 
 function Panel({ title, sub, onSave, saveLabel = '画像で保存', children }: { title: string; sub: string; onSave: () => void; saveLabel?: string; children: React.ReactNode }) {
@@ -449,7 +588,7 @@ function Panel({ title, sub, onSave, saveLabel = '画像で保存', children }: 
           <p className="text-sm font-semibold text-stone-800">{title}</p>
           <p className="text-[11px] text-stone-500">{sub}</p>
         </div>
-        <button type="button" onClick={onSave} className={ghostBtn}><Download className="w-3.5 h-3.5" /> {saveLabel}</button>
+        {saveLabel && <button type="button" onClick={onSave} className={ghostBtn}><Download className="w-3.5 h-3.5" /> {saveLabel}</button>}
       </div>
       {children}
     </div>

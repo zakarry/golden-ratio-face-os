@@ -142,6 +142,39 @@ export async function detectFaceLandmarks(
 }
 
 /**
+ * 試算用：設計図（guide）と、指定した目印の y（px）を同じ1回の検出で返す。
+ * 本番の定義は変えずに、別の目印を使ったらどうなるかを調べるときに使う。
+ */
+export async function detectFaceLandmarksWithRaw(
+  imageSrc: string,
+  rawIdx: number[],
+): Promise<{ guide: DetectedGuide; rawY: Record<number, number> } | null> {
+  const landmarker = await getLandmarker();
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.crossOrigin = 'anonymous';
+    el.onload = () => resolve(el);
+    el.onerror = reject;
+    el.src = imageSrc;
+  });
+  const canvas = document.createElement('canvas');
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  canvas.getContext('2d')!.drawImage(img, 0, 0);
+  try {
+    const result = landmarker.detect(canvas);
+    const lm = result.faceLandmarks?.[0];
+    if (!lm) return null;
+    const guide = guideFromLandmarks(lm, canvas);
+    const rawY: Record<number, number> = {};
+    for (const i of rawIdx) rawY[i] = lm[i].y * canvas.height;
+    return { guide, rawY };
+  } finally {
+    canvas.width = 0; canvas.height = 0;
+  }
+}
+
+/**
  * Detect on an already-drawn canvas (e.g. a downscaled live camera frame).
  * Used by the pilot camera to check framing several times per second.
  */
@@ -153,8 +186,10 @@ export async function detectGuideOnCanvas(canvas: HTMLCanvasElement): Promise<De
 function detectGuideWith(landmarker: FaceLandmarker, canvas: HTMLCanvasElement): DetectedGuide | null {
   const result = landmarker.detect(canvas);
   if (!result.faceLandmarks || result.faceLandmarks.length === 0) return null;
+  return guideFromLandmarks(result.faceLandmarks[0], canvas);
+}
 
-  const lm = result.faceLandmarks[0];
+function guideFromLandmarks(lm: { x: number; y: number }[], canvas: HTMLCanvasElement): DetectedGuide {
 
   // ── 1. Precise eye centers ──────────────────────────────────────────────
   const leftEyeCenter  = avg(pick(lm, LEFT_EYE_IDX));
