@@ -3,20 +3,27 @@
 // 事前アンケート画面（参加者用）
 // 表示: 専用リンク ?p=<token>&survey=1、または参加者ページ内の「アンケート」ボタンから。
 // 保存先: pilot_survey / pilot_reference_people（lib/pilot/survey.ts）
+// official=true のときは公式版（「なりたい顔から」）：似ている人は名前だけ、回答は顔カルテに残す（lib/officialSurvey.ts）
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   SURVEY_QUESTIONS, REFERENCE_KIND_LABEL, fetchSurvey, submitSurvey, shrinkImage, newReferenceId,
   type SurveyAnswers, type ReferencePerson, type ReferenceKind, type SurveyQuestion,
 } from '@/lib/pilot/survey';
+import { getOfficialSurvey, saveOfficialSurvey } from '@/lib/officialSurvey';
 
 interface Props {
-  token: string;
+  /** 専用リンクのトークン（公式版では不要） */
+  token?: string;
   /** 送信後に戻る先があれば */
   onDone?: () => void;
+  /** 公式版：写真なし・名前だけ、顔カルテに保存 */
+  official?: boolean;
+  /** 公式版：答えずに先へ進む */
+  onSkip?: () => void;
 }
 
-export default function SurveyPage({ token, onDone }: Props) {
+export default function SurveyPage({ token = '', onDone, official = false, onSkip }: Props) {
   const [subjectCode, setSubjectCode] = useState('');
   const [answers, setAnswers] = useState<SurveyAnswers>({});
   const [refs, setRefs] = useState<ReferencePerson[]>([]);
@@ -29,6 +36,14 @@ export default function SurveyPage({ token, onDone }: Props) {
   useEffect(() => {
     let alive = true;
     (async () => {
+      if (official) {
+        const s = getOfficialSurvey();
+        setAnswers(s?.answers ?? {});
+        setRefs(s?.references ?? []);
+        setSubmittedAt(s?.submitted_at ?? null);
+        setLoading(false);
+        return;
+      }
       const d = await fetchSurvey(token);
       if (!alive) return;
       if (!d) { setErr('リンクが正しくありません。送られたURLをもう一度開いてください。'); setLoading(false); return; }
@@ -39,7 +54,7 @@ export default function SurveyPage({ token, onDone }: Props) {
       setLoading(false);
     })();
     return () => { alive = false; };
-  }, [token]);
+  }, [token, official]);
 
   const setA = (id: string, v: string | string[]) => setAnswers(a => ({ ...a, [id]: v }));
 
@@ -65,7 +80,7 @@ export default function SurveyPage({ token, onDone }: Props) {
     const imp = answers['impression'];
     if (Array.isArray(imp) && imp.length > 3) return '6は3つまでにしてください。';
     for (const r of refs) {
-      if (r.kind !== 'dislike' && r.person_name.trim() && !r.image_path && !r.localDataUrl) {
+      if (!official && r.kind !== 'dislike' && r.person_name.trim() && !r.image_path && !r.localDataUrl) {
         return `「${r.person_name}」の真正面の写真を付けてください（3・4は一人一枚）。`;
       }
     }
@@ -76,6 +91,16 @@ export default function SurveyPage({ token, onDone }: Props) {
     setErr(null); setMsg(null);
     const v = validate(); if (v) { setErr(v); return; }
     setSending(true);
+    if (official) {
+      try {
+        const saved = await saveOfficialSurvey(answers, refs);
+        setRefs(saved.references); setSubmittedAt(saved.submitted_at);
+        setMsg('保存しました。顔カルテから見られます。あとから直すこともできます。');
+        onDone?.();
+      } catch { setErr('保存できませんでした。もう一度お試しください。'); }
+      setSending(false);
+      return;
+    }
     const res = await submitSurvey(token, answers, refs);
     setSending(false);
     if (!res.ok) { setErr(res.error ?? '送信に失敗しました'); return; }
@@ -86,18 +111,18 @@ export default function SurveyPage({ token, onDone }: Props) {
   };
 
   if (loading) return <div className="p-6 text-sm text-gray-600">読み込み中…</div>;
-  if (err && !subjectCode) return <div className="p-6 text-sm text-red-600">{err}</div>;
+  if (err && !subjectCode && !official) return <div className="p-6 text-sm text-red-600">{err}</div>;
 
   return (
-    <div className="mx-auto max-w-xl p-4 pb-24 text-[15px] leading-relaxed">
-      <h1 className="text-lg font-bold">公式写真メイクの事前アンケート</h1>
+    <div className={`mx-auto max-w-xl p-4 text-[15px] leading-relaxed ${official ? '' : 'pb-24'}`}>
+      <h1 className="text-lg font-bold">{official ? 'なりたい顔のアンケート' : '公式写真メイクの事前アンケート'}</h1>
       <p className="mt-1 text-sm text-gray-600">
-        参加者コード <span className="font-mono font-semibold">{subjectCode}</span>
-        {submittedAt && <span className="ml-2 text-green-700">（送信済み・修正できます）</span>}
+        {!official && <>参加者コード <span className="font-mono font-semibold">{subjectCode}</span></>}
+        {submittedAt && <span className={official ? 'text-green-700' : 'ml-2 text-green-700'}>（{official ? '回答済み' : '送信済み'}・修正できます）</span>}
       </p>
       <p className="mt-3 text-sm text-gray-700">
         正解はないので、思ったままで答えてください。答えたくない項目は空欄で大丈夫です。
-        この回答はメイクの打ち合わせにだけ使い、ほかの参加者には見せません。
+        {official ? 'この回答はあなたの顔カルテに保存されます。' : 'この回答はメイクの打ち合わせにだけ使い、ほかの参加者には見せません。'}
       </p>
 
       <div className="mt-5 space-y-6">
@@ -109,7 +134,8 @@ export default function SurveyPage({ token, onDone }: Props) {
                   {i === 0 && <span className="mr-2 inline-block rounded bg-gray-900 px-2 py-0.5 text-xs text-white">{q.no}</span>}
                   {q.title}
                 </div>
-                {q.help && <div className="mt-0.5 text-xs text-gray-500">{q.help}</div>}
+                {(official && q.type === 'people' ? '名前だけ入力してください（何人でも）。' : q.help) &&
+                  <div className="mt-0.5 text-xs text-gray-500">{official && q.type === 'people' ? '名前だけ入力してください（何人でも）。' : q.help}</div>}
                 <div className="mt-2">{renderInput(q)}</div>
               </div>
             ))}
@@ -120,12 +146,19 @@ export default function SurveyPage({ token, onDone }: Props) {
       {err && <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</div>}
       {msg && <div className="mt-4 rounded-lg bg-green-50 p-3 text-sm text-green-800">{msg}</div>}
 
-      <div className="fixed inset-x-0 bottom-0 border-t border-gray-200 bg-white/95 p-3 backdrop-blur">
-        <div className="mx-auto max-w-xl">
+      <div className={official ? 'mt-5 space-y-2' : 'fixed inset-x-0 bottom-0 border-t border-gray-200 bg-white/95 p-3 backdrop-blur'}>
+        <div className="mx-auto max-w-xl space-y-2">
           <button type="button" onClick={onSubmit} disabled={sending}
             className="w-full rounded-lg bg-gray-900 py-3 text-base font-semibold text-white disabled:opacity-50">
-            {sending ? '送信中…' : (submittedAt ? '修正して送信' : '送信する')}
+            {official
+              ? (sending ? '保存中…' : (submittedAt ? '修正して次へ' : '保存して次へ'))
+              : (sending ? '送信中…' : (submittedAt ? '修正して送信' : '送信する'))}
           </button>
+          {official && onSkip && (
+            <button type="button" onClick={onSkip} className="w-full rounded-lg border border-gray-300 py-2.5 text-sm text-gray-700">
+              {submittedAt ? 'このまま次へ' : 'あとで答える'}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -176,7 +209,7 @@ export default function SurveyPage({ token, onDone }: Props) {
 
   function renderPeople(kind: ReferenceKind) {
     const list = refsByKind[kind];
-    const needPhoto = kind !== 'dislike';
+    const needPhoto = !official && kind !== 'dislike';
     return (
       <div className="space-y-3">
         {list.map(r => (

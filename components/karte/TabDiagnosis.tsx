@@ -6,6 +6,7 @@ import ImageUploader from '@/components/ImageUploader';
 
 import GoldenRatioPanel from '@/components/GoldenRatioPanel';
 import YoseStrengthList from '@/components/YoseStrengthList';
+import SurveyPeopleLine from '@/components/SurveyPeopleLine';
 import SaveKarteButton from './SaveKarteButton';
 import BlueprintCanvas from '@/components/BlueprintCanvas';
 import {
@@ -188,6 +189,7 @@ function FaceIdentitySaved({
 
           <SectionLabel label="① あなたの強み" sub="構造的な設計資源" />
           <YoseStrengthList guide={baseline.guide} imageSrc={baseline.imageSrc} />
+          <SurveyPeopleLine fallback={baseline.survey} />
 
           <SectionLabel label="② 黄金比参考値" sub="構造参考" />
           <GoldenRatioPanel gr={analysis.goldenRatio} />
@@ -492,6 +494,7 @@ function FaceIdentityUpdate({
 
               <SectionLabel label="① あなたの強み" sub="構造的な設計資源" />
               <YoseStrengthList guide={guide} imageSrc={imageSrc} />
+              <SurveyPeopleLine />
 
               <SectionLabel label="② 黄金比参考値" sub="構造参考" />
               <GoldenRatioPanel gr={analysisResult!.goldenRatio} />
@@ -624,6 +627,7 @@ function FaceIdentityCreate({
 
             <SectionLabel label="① あなたの強み" sub="構造的な設計資源" />
             <YoseStrengthList guide={guide} imageSrc={imageSrc} />
+            <SurveyPeopleLine />
 
             <SectionLabel label="② 黄金比参考値" sub="構造参考" />
             <GoldenRatioPanel gr={analysisResult!.goldenRatio} />

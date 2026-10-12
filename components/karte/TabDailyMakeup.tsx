@@ -7,7 +7,7 @@ import ImageUploader from '@/components/ImageUploader';
 import FaceCanvas, { type SimulationMode } from '@/components/FaceCanvas';
 import IllusionAdvicePanel from '@/components/IllusionAdvicePanel';
 import MakeupAdvice from '@/components/MakeupAdvice';
-import StrengthsPanel from '@/components/StrengthsPanel';
+import SurveyPage from '@/components/pilot/SurveyPage';
 import FaceYogaPanel from '@/components/FaceYogaPanel';
 import SaveKarteButton from './SaveKarteButton';
 import { analyzeFaceFromGuide, generateMakeupAdvice, generateIllusionAdvice, computeTargetGuide } from '@/lib/analyzeFaceIdentity';
@@ -23,7 +23,7 @@ import { MAKEUP_PURPOSE_LABELS, FACE_DESIGNER_ENDING_MESSAGE, FACE_DESIGNER_PROV
 import type { DetectedGuide } from '@/lib/faceLandmarks';
 
 type DetectionState = 'idle' | 'detecting' | 'done' | 'error';
-type Step = 'entry' | 'style' | 'purpose' | 'scene' | 'condition' | 'preparation' | 'scan' | 'design' | 'compare';
+type Step = 'entry' | 'survey' | 'style' | 'purpose' | 'scene' | 'condition' | 'preparation' | 'scan' | 'design' | 'compare';
 type EntryChoice = 'basic' | 'style' | 'scene';
 
 const SCORING_FROM_PURPOSE: Record<MakeupPurpose, ScoringModeId> = {
@@ -50,13 +50,13 @@ function getStepsForEntry(entry: EntryChoice): Array<{ id: Step; label: string }
     { id: 'compare',      label: 'Before/After' },
   ];
   if (entry === 'basic') return tail;
-  if (entry === 'style') return [{ id: 'style', label: 'なりたい顔' }, ...tail];
+  if (entry === 'style') return [{ id: 'survey', label: 'アンケート' }, { id: 'style', label: 'なりたい顔' }, ...tail];
   return [{ id: 'scene', label: '予定' }, { id: 'purpose', label: '印象' }, ...tail];
 }
 
 function firstStepForEntry(entry: EntryChoice): Step {
   if (entry === 'basic') return 'condition';
-  if (entry === 'style') return 'style';
+  if (entry === 'style') return 'survey';
   return 'scene';
 }
 
@@ -161,6 +161,16 @@ export default function TabDailyMakeup({ level = 'advanced', onNavigate }: { lev
         />
       ) : (
         <StepProgress step={step} steps={getStepsForEntry(entry ?? 'scene')} />
+      )}
+
+      {/* なりたい顔から：まず事前アンケート（専用リンク版と同じ質問。似ている人は名前だけ） */}
+      {step === 'survey' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-stone-200/50">
+          <SurveyPage official onDone={() => setStep('style')} onSkip={() => setStep('style')} />
+          <div className="px-4 pb-4">
+            <button type="button" onClick={() => setStep('entry')} className="text-xs text-stone-400 underline">← 入口を選び直す</button>
+          </div>
+        </div>
       )}
 
       {step === 'style' && (

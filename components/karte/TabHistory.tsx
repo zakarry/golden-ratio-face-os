@@ -6,6 +6,8 @@ import { getFaceKarteRecords, deleteFaceKarteRecord, getBaselineRecord } from '@
 import type { FaceKarteRecord, KarteRecordType } from '@/types/karte';
 import FaceIdentityLink from '@/components/FaceIdentityLink';
 import { strengthsFromGuide } from '@/components/YoseStrengthList';
+import { getOfficialSurvey, surveyNames, type OfficialSurvey } from '@/lib/officialSurvey';
+import { flattenAnswers, REFERENCE_KIND_LABEL } from '@/lib/pilot/survey';
 
 const TYPE_CONFIG: Record<KarteRecordType, { label: string; icon: React.ReactNode; badge: string; dot: string }> = {
   baseline:    { label: '初回カルテ',     icon: <Stethoscope className="w-3.5 h-3.5" />, badge: 'bg-emerald-50 border-emerald-200 text-emerald-700', dot: 'bg-emerald-400' },
@@ -110,6 +112,9 @@ export default function TabHistory({ onNavigate }: { onNavigate?: (nav: string) 
         </div>
       )}
 
+      {/* 事前アンケート（「なりたい顔から」で回答） */}
+      <SurveyCard />
+
       {/* Record cards */}
       <div className="space-y-3">
         {filtered.map(record => (
@@ -121,6 +126,54 @@ export default function TabHistory({ onNavigate }: { onNavigate?: (nav: string) 
         <p className="text-center text-[10px] text-stone-300 pt-2">
           データはこのデバイスのローカルストレージに保存されています
         </p>
+      )}
+    </div>
+  );
+}
+
+// ─── 事前アンケート ─────────────────────────────────────────────────────────────
+
+function SurveyCard() {
+  const [survey, setSurvey] = useState<OfficialSurvey | null>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const load = () => setSurvey(getOfficialSurvey() ?? getBaselineRecord()?.survey ?? null);
+    load();
+    window.addEventListener('face-survey-updated', load);
+    return () => window.removeEventListener('face-survey-updated', load);
+  }, []);
+  if (!survey) return null;
+  const rows = flattenAnswers(survey.answers).filter(r => r.answer);
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-stone-200/50 overflow-hidden">
+      <button type="button" onClick={() => setOpen(v => !v)} className="w-full px-5 py-4 flex items-center gap-3 text-left">
+        <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-violet-50 border border-violet-200 text-violet-700">
+          <BookOpen className="w-3.5 h-3.5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-violet-50 border-violet-200 text-violet-700">事前アンケート</span>
+            <span className="text-[10px] text-stone-400">{new Date(survey.submitted_at).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+          </div>
+          <p className="text-xs text-stone-500 mt-1 truncate">
+            {surveyNames(survey, 'self_happy').length > 0 ? `なりたい人：${surveyNames(survey, 'self_happy').join('、')}` : 'なりたい人：未回答'}
+          </p>
+        </div>
+        <ChevronDown className={`w-3.5 h-3.5 text-stone-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="border-t border-stone-100 px-5 py-4 space-y-3 text-xs">
+          {(['self_happy', 'others_say', 'dislike'] as const).map(k => surveyNames(survey, k).length > 0 && (
+            <p key={k}><span className="text-stone-400 mr-2">{REFERENCE_KIND_LABEL[k]}：</span><span className="text-stone-700">{surveyNames(survey, k).join('、')}</span></p>
+          ))}
+          {rows.map((r, i) => (
+            <div key={i}>
+              <p className="text-stone-400">{r.no}. {r.title}</p>
+              <p className="text-stone-700 whitespace-pre-wrap">{r.answer}</p>
+            </div>
+          ))}
+          <p className="text-[10px] text-stone-300">直すときは「今日のメイクの目的は？」→「なりたい顔から」で答え直せます</p>
+        </div>
       )}
     </div>
   );

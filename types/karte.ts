@@ -3,6 +3,7 @@ import type { DetectedGuide } from '@/lib/faceLandmarks';
 import type { UserLevel } from './userLevel';
 import type { StyleId } from '@/lib/idealStyleChoices';
 import type { YoseResult } from '@/lib/pilot/yosekata';
+import type { OfficialSurvey } from '@/lib/officialSurvey';
 
 /** 寄せ方（計算層）の結果。診断ごとにカルテへ残す（許容幅などは校正で変わるので config ごと） */
 export interface YosekataKarte {
@@ -135,6 +136,8 @@ export interface FaceKarteRecord {
   providerId?: FaceDesignerProviderId;
   /** 寄せ方（黄金比＝全指標、brand＝ブランドの絞り込み）。参照人物の選択は今は黄金比のみ */
   yosekata?: { ideal: YosekataKarte; brand?: YosekataKarte };
+  /** 事前アンケート（「なりたい顔から」で回答）。Face Identity（baseline）に載せる */
+  survey?: OfficialSurvey;
 
   // Metadata
   note?: string;

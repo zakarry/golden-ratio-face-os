@@ -17,8 +17,10 @@ export function getFaceKarteRecords(): FaceKarteRecord[] {
 }
 
 import { ensureAnonymousSession, getSupabaseClient } from '@/lib/supabaseClient';
+import { withOfficialSurvey } from '@/lib/officialSurvey';
 
-export function saveFaceKarteRecord(record: FaceKarteRecord): void {
+export function saveFaceKarteRecord(input: FaceKarteRecord): void {
+  const record = withOfficialSurvey(input);
   const records = getFaceKarteRecords();
   const idx = records.findIndex(r => r.id === record.id);
   if (idx >= 0) {
@@ -48,7 +50,7 @@ async function mirrorToSupabase(record: FaceKarteRecord): Promise<void> {
 
     const { imageSrc: _imageSrc, guide, analysis, diagnosisSummary, strengths, goldenRatio,
       triangleAnalysis, makeupPlan, beforeAfter, faceYogaPlan, faceYogaSkipped,
-      purpose, scene, level, styleId, providerId, yosekata, note, ...rest } = record;
+      purpose, scene, level, styleId, providerId, yosekata, survey, note, ...rest } = record;
 
     const { error } = await supabase.from('face_karte_records').upsert({
       id: rest.id,
@@ -72,6 +74,7 @@ async function mirrorToSupabase(record: FaceKarteRecord): Promise<void> {
       style_id: styleId ?? null,
       provider_id: providerId ?? null,
       yosekata: yosekata ?? null,
+      survey: survey ?? null,
       note: note ?? null,
     });
 
