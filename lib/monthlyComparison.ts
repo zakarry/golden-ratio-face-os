@@ -116,6 +116,7 @@ import type {
 import { FACE_DESIGNER_PROVIDERS, MAKEUP_PURPOSE_LABELS } from '@/types/karte';
 import { getFaceRule } from '@/lib/faceRules';
 import { buildDesignerYosekata } from '@/lib/yosekataDesigner';
+import { metricChangeSummaryFromGuides } from '@/lib/metricChange';
 import type { DetectedGuide } from '@/lib/faceLandmarks';
 
 const PURPOSE_IMPRESSION_LABEL: Partial<Record<MakeupPurpose, string>> = {
@@ -358,7 +359,13 @@ ${yose.brand.text}` : faceRule.reviewNote,
 export function computeBeforeAfterSummary(
   before: AnalysisResult,
   after: AnalysisResult,
+  beforeGuide: DetectedGuide | null = null,
+  afterGuide: DetectedGuide | null = null,
 ): string[] {
+  // 設計図が2枚あれば、12指標の差を許容幅で絞った要約にする（固定文は使わない）
+  const byMetrics = metricChangeSummaryFromGuides(beforeGuide, afterGuide);
+  if (byMetrics) return byMetrics;
+
   const summary: string[] = [];
 
   const symDelta = after.metrics.symmetryScore - before.metrics.symmetryScore;

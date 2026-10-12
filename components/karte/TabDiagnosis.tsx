@@ -4,9 +4,8 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { ScanFace, Eye, EyeOff, X, ChevronRight, ArrowRight, Sparkles, CircleCheck as CheckCircle2, RefreshCw, Calendar } from 'lucide-react';
 import ImageUploader from '@/components/ImageUploader';
 
-import TriangleTypeCard from '@/components/TriangleTypeCard';
 import GoldenRatioPanel from '@/components/GoldenRatioPanel';
-import StrengthsPanel from '@/components/StrengthsPanel';
+import YoseStrengthList from '@/components/YoseStrengthList';
 import SaveKarteButton from './SaveKarteButton';
 import BlueprintCanvas from '@/components/BlueprintCanvas';
 import {
@@ -188,12 +187,9 @@ function FaceIdentitySaved({
           <IdentityPanelHeader />
 
           <SectionLabel label="① あなたの強み" sub="構造的な設計資源" />
-          <StrengthsPanel strengths={analysis.strengths} />
+          <YoseStrengthList guide={baseline.guide} />
 
-          <SectionLabel label="② 顔印象タイプ" />
-          <TriangleTypeCard ta={analysis.triangleAnalysis} />
-
-          <SectionLabel label="③ 黄金比参考値" sub="構造参考" />
+          <SectionLabel label="② 黄金比参考値" sub="構造参考" />
           <GoldenRatioPanel gr={analysis.goldenRatio} />
 
           {/* Update action — secondary, not primary */}
@@ -317,7 +313,7 @@ function SavedFacePreview({
 
       <div className="relative z-10 text-center space-y-1">
         <p className="text-sm font-medium text-stone-500">保存済みの顔画像がありません</p>
-        <p className="text-[11px] text-stone-400">縦横比 {ta.ratio.toFixed(2)} · {ta.label}</p>
+        <p className="text-[11px] text-stone-400">縦横比 {ta.ratio.toFixed(2)}</p>
       </div>
 
       <button
@@ -495,12 +491,9 @@ function FaceIdentityUpdate({
               <IdentityPanelHeader />
 
               <SectionLabel label="① あなたの強み" sub="構造的な設計資源" />
-              <StrengthsPanel strengths={analysisResult!.strengths} />
+              <YoseStrengthList guide={guide} />
 
-              <SectionLabel label="② 顔印象タイプ" />
-              <TriangleTypeCard ta={analysisResult!.triangleAnalysis} />
-
-              <SectionLabel label="③ 黄金比参考値" sub="構造参考" />
+              <SectionLabel label="② 黄金比参考値" sub="構造参考" />
               <GoldenRatioPanel gr={analysisResult!.goldenRatio} />
 
               <div className="pt-2">
@@ -630,12 +623,9 @@ function FaceIdentityCreate({
             <IdentityPanelHeader />
 
             <SectionLabel label="① あなたの強み" sub="構造的な設計資源" />
-            <StrengthsPanel strengths={analysisResult!.strengths} />
+            <YoseStrengthList guide={guide} />
 
-            <SectionLabel label="② 顔印象タイプ" />
-            <TriangleTypeCard ta={analysisResult!.triangleAnalysis} />
-
-            <SectionLabel label="③ 黄金比参考値" sub="構造参考" />
+            <SectionLabel label="② 黄金比参考値" sub="構造参考" />
             <GoldenRatioPanel gr={analysisResult!.goldenRatio} />
 
             <div className="pt-2">

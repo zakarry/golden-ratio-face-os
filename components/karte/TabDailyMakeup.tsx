@@ -116,7 +116,7 @@ export default function TabDailyMakeup({ level = 'advanced', onNavigate }: { lev
       setAfterResult(result);
       setAfterDetState('done');
       if (beforeResult) {
-        const summary = computeBeforeAfterSummary(beforeResult, result);
+        const summary = computeBeforeAfterSummary(beforeResult, result, beforeGuide, detected);
         setBeforeAfter({ beforeAnalysis: beforeResult, afterAnalysis: result, changeSummary: summary });
         setImpression(computeImpressionComparison(beforeResult, result, purpose));
         setDesignerComment(generateFaceDesignerComment(beforeResult, result, purpose, providerId, beforeGuide));

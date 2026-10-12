@@ -4,7 +4,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { ScanFace, TrendingUp, TrendingDown, Minus, X, Calendar, CircleAlert as AlertCircle, Activity, ChevronRight, ChartBar as BarChart3 } from 'lucide-react';
 import ImageUploader from '@/components/ImageUploader';
 import FaceCanvas, { type SimulationMode } from '@/components/FaceCanvas';
-import StrengthsPanel from '@/components/StrengthsPanel';
+import YoseStrengthList from '@/components/YoseStrengthList';
 import SaveKarteButton from './SaveKarteButton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
@@ -224,7 +224,7 @@ function DailyConditionTab({ onNavigate }: { onNavigate?: (nav: string) => void 
                 <span className="text-[11px] font-semibold text-stone-500 tracking-wide">今日の強み</span>
                 <span className="text-[10px] text-stone-300">現在の構造</span>
               </div>
-              <StrengthsPanel strengths={analysisResult!.strengths} />
+              <YoseStrengthList guide={guide} />
 
               <div className="pt-2">
                 <SaveKarteButton label="今日のカルテを保存" onSave={handleSave} saved={saved} />

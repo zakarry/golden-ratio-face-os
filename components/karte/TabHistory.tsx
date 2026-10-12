@@ -5,6 +5,7 @@ import { Trash2, ChevronDown, BookOpen, Clock, Stethoscope, Brush, Activity, Fla
 import { getFaceKarteRecords, deleteFaceKarteRecord, getBaselineRecord } from '@/lib/karteStorage';
 import type { FaceKarteRecord, KarteRecordType } from '@/types/karte';
 import FaceIdentityLink from '@/components/FaceIdentityLink';
+import { strengthsFromGuide } from '@/components/YoseStrengthList';
 
 const TYPE_CONFIG: Record<KarteRecordType, { label: string; icon: React.ReactNode; badge: string; dot: string }> = {
   baseline:    { label: '初回カルテ',     icon: <Stethoscope className="w-3.5 h-3.5" />, badge: 'bg-emerald-50 border-emerald-200 text-emerald-700', dot: 'bg-emerald-400' },
@@ -132,7 +133,10 @@ function KarteCard({ record, onDelete }: { record: FaceKarteRecord; onDelete: (i
   const cfg = TYPE_CONFIG[record.recordType];
   const date = new Date(record.date);
 
-  const triangleLabel = record.triangleAnalysis.label;
+  // 強み＝寄せ方（黄金比）で範囲内の指標。設計図か保存済みの寄せ方から出し、どちらも無ければ出さない（固定文は使わない）
+  const strengths = strengthsFromGuide(record.guide)
+    ?? record.yosekata?.ideal.rows.filter(r => r.relation === 'same').map(r => r.label)
+    ?? [];
   const grRatio = record.goldenRatio.faceRatio.toFixed(3);
 
   return (
@@ -155,7 +159,7 @@ function KarteCard({ record, onDelete }: { record: FaceKarteRecord; onDelete: (i
             </span>
           </div>
           <p className="text-xs text-stone-500 mt-1 truncate">
-            {triangleLabel} · 縦横比 {grRatio}
+            縦横比 {grRatio}
             {record.diagnosisSummary.length > 0 && ` · ${record.diagnosisSummary.length}件の調整ポイント`}
           </p>
         </div>
@@ -194,10 +198,10 @@ function KarteCard({ record, onDelete }: { record: FaceKarteRecord; onDelete: (i
             </Section>
           )}
           {/* Strengths */}
-          {record.strengths.length > 0 && (
-            <Section title="強み">
+          {strengths.length > 0 && (
+            <Section title="強み（黄金比の範囲内）">
               <ul className="space-y-1">
-                {record.strengths.map((s, i) => (
+                {strengths.map((s, i) => (
                   <li key={i} className="flex items-start gap-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 flex-shrink-0" />
                     <span className="text-xs text-stone-600">{s}</span>
