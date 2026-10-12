@@ -2,7 +2,8 @@
 // exceljs はボタンを押したときだけ読み込む。
 
 import { getSupabaseClient } from '@/lib/supabaseClient';
-import { METRIC_DEFS } from './targetCard';
+import { METRIC_DEFS, type PilotMetrics } from './targetCard';
+import { buildYoseBundle, pickYoseSubject } from './yosekataStaff';
 import { staffMediaUrls, type ParticipantSummary } from './staff';
 import { fetchAllSurveysForStaff, flattenAnswers, REFERENCE_KIND_LABEL } from './survey';
 
@@ -219,6 +220,51 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
     s4.addRow(row);
   });
   header(s4);
+
+  // ── 寄せ方（本人＝写り○の最新メイク前、目標＝黄金比＋測定済みの似ている人）。書き出すたびに計算する
+  const s5 = wb.addWorksheet('寄せ方（束ね）');
+  s5.columns = [
+    { header: 'コード', key: 'code', width: 10 },
+    { header: '名前', key: 'name', width: 16 },
+    { header: '本人の撮影日', key: 'at', width: 12 },
+    { header: '指標', key: 'metric', width: 24 },
+    { header: 'まとめ', key: 'verdict', width: 14 },
+    { header: '方向', key: 'dir', width: 22 },
+    { header: '目標ごとの方向', key: 'by', width: 60 },
+    { header: '黄金比', key: 'ideal', width: 22 },
+  ];
+  const s6 = wb.addWorksheet('寄せ方（文章）');
+  s6.columns = [
+    { header: 'コード', key: 'code', width: 10 },
+    { header: '名前', key: 'name', width: 16 },
+    { header: '本人の撮影日', key: 'at', width: 12 },
+    { header: '目標', key: 'target', width: 18 },
+    { header: '種類', key: 'kind', width: 18 },
+    { header: '文章', key: 'text', width: 110 },
+  ];
+  for (const p of list) {
+    const subject = pickYoseSubject(captures.filter(c => c.participant_token === p.token).map(c => ({ ...c, id: '' })));
+    if (!subject?.metrics) continue;
+    const bundle = buildYoseBundle(p.subjectCode, subject.metrics as unknown as PilotMetrics, refs.filter(r => r.token === p.token));
+    const at = jstDate(subject.taken_at!);
+    const ideal = bundle.results[0].result;
+    for (const s of bundle.summary) {
+      const ir = ideal.rows.find(x => x.id === s.id);
+      s5.addRow({
+        code: p.subjectCode, name: p.name, at, metric: s.label, verdict: s.verdict, dir: s.direction,
+        by: Object.entries(s.byTarget).map(([n, d]) => `${n}：${d || '似ている'}`).join('／'),
+        ideal: ir ? (ir.relation === 'same' ? '範囲内' : ir.direction) : '',
+      });
+    }
+    for (const { result } of bundle.results) {
+      s6.addRow({
+        code: p.subjectCode, name: p.name, at, target: result.targetName,
+        kind: result.targetKind === 'ideal' ? '黄金比' : REFERENCE_KIND_LABEL[result.targetKind], text: result.text,
+      }).alignment = { vertical: 'top', wrapText: true };
+    }
+  }
+  header(s5);
+  header(s6);
 
   const buf = await wb.xlsx.writeBuffer();
   const a = document.createElement('a');

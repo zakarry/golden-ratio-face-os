@@ -14,6 +14,7 @@ import {
 import type { PilotHistoryItem } from '@/lib/pilot/pilotStorage';
 import PilotHistory from './PilotHistory';
 import StaffSurvey from './StaffSurvey';
+import StaffYosekata from './StaffYosekata';
 import StaffCaptures from './StaffCaptures';
 
 const fmt = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', timeZone: 'Asia/Tokyo' }) : '—';
@@ -242,6 +243,8 @@ function Detail({ p, onBack }: { p: ParticipantSummary; onBack: () => void }) {
       <EditParticipant p={p} />
       {/* 事前アンケート（本人の最新の「メイク前」と参照写真を並べる） */}
       <StaffSurvey token={p.token} subjectMetrics={history ? ([...history].reverse().find(h => h.phase === 'before')?.metrics ?? null) : null} />
+      {/* 寄せ方（本人→黄金比・似ている人）。計算だけで出す */}
+      {history && <StaffYosekata code={p.subjectCode} token={p.token} history={history} />}
       {error && <p className="text-xs text-rose-700">{error}</p>}
       {!history && !error && <p className="text-xs text-stone-400">読み込んでいます…</p>}
       {history && <PilotHistory history={history} getUrls={staffMediaUrls} showPhotos />}
