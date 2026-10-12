@@ -25,6 +25,8 @@ export interface FramingCheck {
   eyeOpen?: { left: number; right: number };
   ok: boolean;
   warnings: string[];
+  /** 上下の傾き（度）。8〜20° が基準。奥行きが取れない古い記録には無い（あとから試算値で補った記録はある） */
+  pitch?: number;
   /** 理想との比較に入れた目間距離の補正（スマホ撮影 −0.014）。無い記録は補正なしで作ったもの */
   eyeDistCorrection?: number;
 }
@@ -287,9 +289,17 @@ export const FRAMING_LIMITS = {
   gazeMax: 0.6,
   /** 目の開き：縦幅÷横幅がこれ以上（両目とも）。目を大きく見せるためではなく、まばたき・半目・下を見て瞼が下がった状態だけを止める値 */
   eyeOpenMin: 0.18,
+  /** 上下の傾き（度）。2025年の写真（説明会・スタジオ）が入っていた範囲。外れると人中比・中顔面÷下顔面が大きく動く */
+  pitchMin: 8,
+  pitchMax: 20,
 } as const;
 
-export type FramingIssue = 'yaw' | 'roll' | 'small' | 'large' | 'gaze' | 'eyeOpen';
+/** 上下の傾きが基準内か（8〜20°）。傾きが無い記録は基準外として扱う */
+export function pitchInRange(p: number | undefined | null) {
+  return p != null && p >= FRAMING_LIMITS.pitchMin && p <= FRAMING_LIMITS.pitchMax;
+}
+
+export type FramingIssue = 'yaw' | 'roll' | 'small' | 'large' | 'gaze' | 'eyeOpen' | 'pitchHigh' | 'pitchLow';
 
 /** 撮影中のガイドに出す短い言葉 */
 export const FRAMING_HINT: Record<FramingIssue, string> = {
@@ -299,6 +309,8 @@ export const FRAMING_HINT: Record<FramingIssue, string> = {
   large: '少し離れて',
   gaze: 'レンズを見てください',
   eyeOpen: 'レンズを見てください',
+  pitchHigh: 'スマホを目の高さに',
+  pitchLow: 'あごを少し引いて',
 };
 
 export function measureFraming(g: DetectedGuide, imageW: number, imageH: number) {
@@ -329,11 +341,18 @@ export function measureFraming(g: DetectedGuide, imageW: number, imageH: number)
     };
     if (Math.min(eyeOpen.left, eyeOpen.right) < FRAMING_LIMITS.eyeOpenMin) issues.push('eyeOpen');
   }
-  return { yaw, roll, faceWidthFrac, gaze, eyeOpen, issues };
+
+  // 上下の傾き：大きい＝うつむき（スマホが顔より上）、小さい＝あおり。奥行きが取れない古い記録では判定しない
+  const pitch = g.pitchDeg;
+  if (pitch != null) {
+    if (pitch > FRAMING_LIMITS.pitchMax) issues.push('pitchHigh');
+    else if (pitch < FRAMING_LIMITS.pitchMin) issues.push('pitchLow');
+  }
+  return { yaw, roll, faceWidthFrac, gaze, eyeOpen, pitch, issues };
 }
 
 export function checkFraming(g: DetectedGuide, imageW: number, imageH: number): FramingCheck {
-  const { yaw, roll, faceWidthFrac, gaze, eyeOpen, issues } = measureFraming(g, imageW, imageH);
+  const { yaw, roll, faceWidthFrac, gaze, eyeOpen, pitch, issues } = measureFraming(g, imageW, imageH);
   const warnings = issues.map(i => ({
     yaw: yaw > 0 ? '顔が少し左を向いています（本人の右側が見えすぎ）。正面へ' : '顔が少し右を向いています。正面へ',
     roll: `顔が${Math.abs(roll).toFixed(0)}°傾いています。目の高さを水平に`,
@@ -341,6 +360,8 @@ export function checkFraming(g: DetectedGuide, imageW: number, imageH: number): 
     large: '顔が大きすぎます。少し離れてください',
     gaze: '視線がそれています。カメラのレンズを見てください',
     eyeOpen: 'まばたきか、視線が下がっています。カメラのレンズを見てください',
+    pitchHigh: `顔を見下ろす角度です（${pitch?.toFixed(0)}°）。スマホを目の高さにしてください`,
+    pitchLow: `顔を見上げる角度です（${pitch?.toFixed(0)}°）。あごを少し引いてください`,
   })[i]);
-  return { yaw, roll, faceWidthFrac, gaze, eyeOpen, ok: warnings.length === 0, warnings };
+  return { yaw, roll, faceWidthFrac, gaze, eyeOpen, pitch, ok: warnings.length === 0, warnings };
 }

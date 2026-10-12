@@ -3,7 +3,7 @@
 
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import { METRIC_DEFS, type PilotMetrics } from './targetCard';
-import { buildYoseBundle, pickYoseSubject } from './yosekataStaff';
+import { buildYoseBundle, yoseSubjectFromRecords } from './yosekataStaff';
 import { yoseStrengths } from './yoseStrengths';
 import { staffMediaUrls, type ParticipantSummary } from './staff';
 import { fetchAllSurveysForStaff, flattenAnswers, REFERENCE_KIND_LABEL } from './survey';
@@ -41,7 +41,7 @@ export interface CaptureRow {
   participant_token: string;
   phase: string;
   taken_at: string;
-  framing: { ok?: boolean; warnings?: string[] } | null;
+  framing: { ok?: boolean; warnings?: string[]; pitch?: number; faceWidthFrac?: number } | null;
   metrics: Record<string, number> | null;
   actionable: number | null;
   headline: string | null;
@@ -90,6 +90,7 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
     { header: 'メイク前', key: 'before', width: 9 },
     { header: 'メイク後', key: 'after', width: 9 },
     { header: '最終撮影日', key: 'last', width: 12 },
+    { header: '撮り直し', key: 'retake', width: 18 },
     { header: '専用リンク', key: 'url', width: 70 },
   ];
   list.forEach(p => s1.addRow({
@@ -98,6 +99,7 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
     consentAt: p.consentedAt ? jstDate(p.consentedAt) : '',
     sessions: p.sessions, count: p.count, before: p.beforeCount, after: p.afterCount,
     last: p.lastAt ? jstDate(p.lastAt) : '',
+    retake: p.needsRetakePitch ? '要撮り直し（傾き）' : '',
     url: `${origin}/?p=${p.token}&openExternalBrowser=1`,
   }));
   header(s1);
@@ -243,10 +245,13 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
     { header: '文章', key: 'text', width: 110 },
   ];
   for (const p of list) {
-    const subject = pickYoseSubject(captures.filter(c => c.participant_token === p.token).map(c => ({ ...c, id: '' })));
-    if (!subject?.metrics) continue;
-    const bundle = buildYoseBundle(p.subjectCode, subject.metrics as unknown as PilotMetrics, refs.filter(r => r.token === p.token));
-    const at = jstDate(subject.taken_at!);
+    const { subject, needsRetakePitch } = yoseSubjectFromRecords(captures.filter(c => c.participant_token === p.token).map(c => ({ ...c, id: '' })));
+    if (!subject) {
+      if (needsRetakePitch) s6.addRow({ code: p.subjectCode, name: p.name, at: '', target: '', kind: '', text: '要撮り直し（傾き）：写り○のメイク前に、傾き 8〜20° の写真がない' });
+      continue;
+    }
+    const bundle = buildYoseBundle(p.subjectCode, subject.metrics, refs.filter(r => r.token === p.token));
+    const at = `${jstDate(subject.takenAt)}（${subject.count}枚の中央値）`;
     const ideal = bundle.results[0].result;
     for (const s of bundle.summary) {
       const ir = ideal.rows.find(x => x.id === s.id);

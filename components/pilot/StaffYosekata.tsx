@@ -13,13 +13,13 @@ import { fetchSurveyForStaff, REFERENCE_KIND_LABEL, type StaffReferenceRow } fro
 import type { Tri, YoseResult, YoseRow } from '@/lib/pilot/yosekata';
 import { YOSEKATA_VERSION } from '@/lib/pilot/yosekata';
 import { SMARTPHONE_NOTE } from '@/lib/pilot/targetCard';
-import { buildYoseBundle, fetchRecordGuide, listSavedYosekata, pickYoseSubject, saveYosekata, type SavedYoseRow } from '@/lib/pilot/yosekataStaff';
+import { buildYoseBundle, fetchRecordGuide, listSavedYosekata, yoseSubjectFromRecords, saveYosekata, type SavedYoseRow } from '@/lib/pilot/yosekataStaff';
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' });
 const COLOR = { self: '#1c1917', target: '#2563eb', ideal: '#dc2626' };
 
 export default function StaffYosekata({ code, token, history }: { code: string; token: string; history: PilotHistoryItem[] }) {
-  const subject = useMemo(() => pickYoseSubject(history), [history]);
+  const { subject, needsRetakePitch } = useMemo(() => yoseSubjectFromRecords(history), [history]);
   const [refs, setRefs] = useState<StaffReferenceRow[] | null>(null);
   const [saved, setSaved] = useState<SavedYoseRow[] | null>(null);
   const [sel, setSel] = useState(0);
@@ -52,7 +52,7 @@ export default function StaffYosekata({ code, token, history }: { code: string; 
     <div className="rounded-2xl border border-stone-200 bg-white p-4 space-y-4">
       <div className="flex items-center gap-2 flex-wrap">
         <p className="text-sm font-semibold text-stone-800 flex items-center gap-2"><Compass className="w-4 h-4" /> 寄せ方</p>
-        {subject && <span className="text-xs text-stone-500">本人＝{fmtDate(subject.takenAt)} のメイク前（写り○）</span>}
+        {subject && <span className="text-xs text-stone-500">本人＝写り○・傾き8〜20°のメイク前 {subject.count}枚の中央値（最新 {fmtDate(subject.takenAt)}）</span>}
         <span className="text-[10px] text-stone-400">計算の版 {YOSEKATA_VERSION}</span>
         <div className="ml-auto flex gap-2">
           <button type="button" onClick={() => { setMsg(''); load(); }} className={btn}><RefreshCw className="w-3.5 h-3.5" /> 再計算</button>
@@ -61,7 +61,9 @@ export default function StaffYosekata({ code, token, history }: { code: string; 
       </div>
       {msg && <p className="text-xs text-stone-600">{msg}</p>}
       {error && <p className="text-xs text-rose-700">{error}</p>}
-      {!subject && <p className="text-xs text-stone-500">写り○の「メイク前」の撮影がまだないので、寄せ方は出せません。</p>}
+      {!subject && (needsRetakePitch
+        ? <p className="text-xs font-semibold text-amber-700">要撮り直し（傾き）：写り○のメイク前はありますが、顔の上下の傾きが 8〜20° に入っている写真がありません。</p>
+        : <p className="text-xs text-stone-500">写り○の「メイク前」の撮影がまだないので、寄せ方は出せません。</p>)}
       {subject && !refs && !error && <p className="text-xs text-stone-400">読み込んでいます…</p>}
 
       {subject && bundle && (

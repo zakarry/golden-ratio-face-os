@@ -2,7 +2,7 @@
 // 全員の記録と写真を読める（判定はデータベースの is_pilot_staff() とアクセスの決まりで行う）。
 
 import { getSupabaseClient } from '@/lib/supabaseClient';
-import { toHistoryItem, type PilotHistoryItem } from './pilotStorage';
+import { pitchInRange, toHistoryItem, type PilotHistoryItem } from './pilotStorage';
 import { renderBlueprintJpeg } from './blueprintImage';
 import { analyzeFaceFromGuide } from '@/lib/analyzeFaceMock';
 import type { DetectedGuide } from '@/lib/faceLandmarks';
@@ -63,6 +63,8 @@ export interface ParticipantSummary {
   lastAt: string | null;
   /** 事前アンケートの回答日時（未回答なら null） */
   surveyAt: string | null;
+  /** 写り○のメイク前はあるのに、傾き 8〜20° の写真が1枚もない（寄せ方・束ね表に使える本人の値がない） */
+  needsRetakePitch: boolean;
 }
 
 const jstDate = (iso: string) => new Date(new Date(iso).getTime() + 9 * 3600e3).toISOString().slice(0, 10);
@@ -80,13 +82,13 @@ export async function listParticipants(): Promise<ParticipantSummary[]> {
   const surveyAt = new Map((sv ?? []).map(s => [s.token as string, s.updated_at as string]));
 
   // 記録は最大 40名×30枚。1回の取得上限（1000行）を超えるので分けて読む
-  const rows: { participant_token: string; phase: string; taken_at: string }[] = [];
+  const rows: { participant_token: string; phase: string; taken_at: string; ok: boolean | null; pitch: number | null }[] = [];
   for (let from = 0; ; from += 1000) {
     const { data, error: e2 } = await supabase.from('pilot_records')
-      .select('participant_token, phase, taken_at').not('participant_token', 'is', null)
+      .select('participant_token, phase, taken_at, ok:framing->ok, pitch:framing->pitch').not('participant_token', 'is', null)
       .order('taken_at').range(from, from + 999);
     if (e2) throw new Error(e2.message);
-    rows.push(...(data ?? []));
+    rows.push(...((data ?? []) as unknown as typeof rows));
     if (!data || data.length < 1000) break;
   }
 
@@ -100,6 +102,10 @@ export async function listParticipants(): Promise<ParticipantSummary[]> {
       sessions: new Set(mine.map(r => jstDate(r.taken_at))).size,
       lastAt: mine.length ? mine[mine.length - 1].taken_at : null,
       surveyAt: surveyAt.get(p.token) ?? null,
+      needsRetakePitch: (() => {
+        const okBefore = mine.filter(r => r.phase === 'before' && r.ok === true);
+        return okBefore.length > 0 && !okBefore.some(r => pitchInRange(r.pitch));
+      })(),
     };
   });
 }

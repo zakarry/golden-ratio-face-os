@@ -1,8 +1,9 @@
 // 運営ページ用の寄せ方（yosekata.ts の計算を、参加者の記録と「似ている人」につなぐ）
-// 本人＝写り○（framing.ok）の最新の「メイク前」、目標＝黄金比＋測定済みの似ている人全員。
+// 本人＝写り○かつ傾き 8〜20° の「メイク前」の記録の中央値、目標＝黄金比＋測定済みの似ている人全員。
 
 import { getSupabaseClient } from '@/lib/supabaseClient';
-import type { PilotMetrics } from './targetCard';
+import { METRIC_DEFS, type PilotMetrics } from './targetCard';
+import { pitchInRange } from './pilotStorage';
 import type { StaffReferenceRow } from './survey';
 import { buildYosekata, summarizeYosekata, SMARTPHONE_YOSE_CORRECTION, YOSEKATA_VERSION, type YoseResult, type YoseSummaryRow } from './yosekata';
 
@@ -12,14 +13,38 @@ export interface YoseSubjectRecord {
   taken_at?: string;
   takenAt?: string;
   metrics: PilotMetrics | Record<string, number> | null;
-  framing: { ok?: boolean } | null;
+  framing: { ok?: boolean; pitch?: number } | null;
 }
 
-/** 写り○の最新の before 記録（無ければ null） */
-export function pickYoseSubject<T extends YoseSubjectRecord>(records: T[]): T | null {
-  const ok = records.filter(r => r.phase === 'before' && r.framing?.ok === true && r.metrics);
-  ok.sort((a, b) => (a.taken_at ?? a.takenAt ?? '').localeCompare(b.taken_at ?? b.takenAt ?? ''));
-  return ok[ok.length - 1] ?? null;
+
+export interface YoseSubject {
+  /** 使った記録のうちいちばん新しいもの（保存の record_id と写真に使う） */
+  id: string;
+  takenAt: string;
+  /** 中央値を取った記録の数 */
+  count: number;
+  /** 写り○かつ傾き 8〜20° のメイク前の記録の中央値（指標ごと） */
+  metrics: PilotMetrics;
+}
+
+const when = (r: YoseSubjectRecord) => r.taken_at ?? r.takenAt ?? '';
+
+/**
+ * 寄せ方・束ね表で使う「本人の値」。写り○かつ傾き 8〜20° のメイク前の記録の中央値。
+ * needsRetakePitch：写り○のメイク前はあるのに、傾きが基準内の記録が1枚もない（要撮り直し）
+ */
+export function yoseSubjectFromRecords(records: YoseSubjectRecord[]): { subject: YoseSubject | null; needsRetakePitch: boolean } {
+  const okBefore = records.filter(r => r.phase === 'before' && r.framing?.ok === true && r.metrics);
+  const use = okBefore.filter(r => pitchInRange(r.framing?.pitch)).sort((a, b) => when(a).localeCompare(when(b)));
+  if (!use.length) return { subject: null, needsRetakePitch: okBefore.length > 0 };
+  const metrics = {} as PilotMetrics;
+  for (const d of METRIC_DEFS) {
+    const v = use.map(r => (r.metrics as Record<string, number>)[d.id]).filter(x => typeof x === 'number' && isFinite(x)).sort((a, b) => a - b);
+    const n = v.length;
+    metrics[d.id] = n ? (n % 2 ? v[(n - 1) / 2] : (v[n / 2 - 1] + v[n / 2]) / 2) : NaN;
+  }
+  const last = use[use.length - 1];
+  return { subject: { id: last.id, takenAt: when(last), count: use.length, metrics }, needsRetakePitch: false };
 }
 
 export interface YoseBundle {

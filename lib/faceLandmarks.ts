@@ -37,6 +37,8 @@ export interface DetectedGuide {
   irisDiameterPx?: number;
   imageWidth?: number;
   imageHeight?: number;
+  /** 顔の上下の傾き（度）。額の上端（目印10）とあご先（目印152）の奥行きの差から推定。大きいほどうつむき（スマホが顔より上） */
+  pitchDeg?: number;
   // Eyelid centers (upper / lower) for eye openness: lm 159/145 (image-left eye), 386/374 (image-right eye)
   leftEyeTopY?: number;
   leftEyeBottomY?: number;
@@ -294,6 +296,9 @@ function guideFromLandmarks(lm: { x: number; y: number; z?: number }[], canvas: 
     irisDiameterPx,
     imageWidth:      canvas.width,
     imageHeight:     canvas.height,
+    pitchDeg: lm[10].z != null && lm[152].z != null
+      ? estimatePitchDeg({ y: lm[10].y * canvas.height, z: lm[10].z * canvas.width }, { y: lm[152].y * canvas.height, z: lm[152].z * canvas.width })
+      : undefined,
   };
 }
 

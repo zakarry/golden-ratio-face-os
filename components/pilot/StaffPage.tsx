@@ -124,7 +124,7 @@ function Dashboard() {
       {list && view === 'people' && (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
-            <thead><tr className="text-stone-400 text-[10px] text-left"><th className="py-1">コード</th><th>名前</th><th>未成年</th><th>同意</th><th>アンケート</th><th className="text-right">回</th><th className="text-right">枚（前/後）</th><th className="text-right">最終</th><th /></tr></thead>
+            <thead><tr className="text-stone-400 text-[10px] text-left"><th className="py-1">コード</th><th>名前</th><th>未成年</th><th>同意</th><th>アンケート</th><th>撮り直し</th><th className="text-right">回</th><th className="text-right">枚（前/後）</th><th className="text-right">最終</th><th /></tr></thead>
             <tbody>{list.map(p => (
               <tr key={p.token} onClick={() => setSelected(p)} className={`border-t border-stone-100 cursor-pointer hover:bg-amber-50/60 ${p.count === 0 ? 'text-stone-400' : 'text-stone-800'}`}>
                 <td className="py-2 font-semibold">{p.subjectCode}</td>
@@ -132,6 +132,7 @@ function Dashboard() {
                 <td>{p.isMinor ? '未成年' : ''}</td>
                 <td>{p.consentedAt ? (p.consentBy === 'guardian' ? '保護者' : '本人') : <span className="text-amber-700">未</span>}</td>
                 <td>{p.surveyAt ? <span className="text-emerald-700">済</span> : <span className="text-stone-300">未</span>}</td>
+                <td>{p.needsRetakePitch && <span className="rounded-full border border-amber-300 bg-amber-50 text-amber-800 px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap">要撮り直し（傾き）</span>}</td>
                 <td className="text-right tabular-nums">{p.sessions}</td>
                 <td className="text-right tabular-nums">{p.count}（{p.beforeCount}/{p.afterCount}）</td>
                 <td className="text-right">{fmt(p.lastAt)}</td>
