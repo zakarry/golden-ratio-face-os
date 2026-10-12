@@ -148,7 +148,7 @@ export async function detectFaceLandmarks(
 export async function detectFaceLandmarksWithRaw(
   imageSrc: string,
   rawIdx: number[],
-): Promise<{ guide: DetectedGuide; rawY: Record<number, number> } | null> {
+): Promise<{ guide: DetectedGuide; rawY: Record<number, number>; rawPts: Record<number, { x: number; y: number; z: number }> } | null> {
   const landmarker = await getLandmarker();
   const img = await new Promise<HTMLImageElement>((resolve, reject) => {
     const el = new Image();
@@ -167,8 +167,13 @@ export async function detectFaceLandmarksWithRaw(
     if (!lm) return null;
     const guide = guideFromLandmarks(lm, canvas);
     const rawY: Record<number, number> = {};
-    for (const i of rawIdx) rawY[i] = lm[i].y * canvas.height;
-    return { guide, rawY };
+    // x・z は画像の幅、y は高さを単位にした px（z は奥行き。小さいほどカメラに近い）
+    const rawPts: Record<number, { x: number; y: number; z: number }> = {};
+    for (const i of rawIdx) {
+      rawY[i] = lm[i].y * canvas.height;
+      rawPts[i] = { x: lm[i].x * canvas.width, y: lm[i].y * canvas.height, z: lm[i].z * canvas.width };
+    }
+    return { guide, rawY, rawPts };
   } finally {
     canvas.width = 0; canvas.height = 0;
   }
@@ -189,7 +194,7 @@ function detectGuideWith(landmarker: FaceLandmarker, canvas: HTMLCanvasElement):
   return guideFromLandmarks(result.faceLandmarks[0], canvas);
 }
 
-function guideFromLandmarks(lm: { x: number; y: number }[], canvas: HTMLCanvasElement): DetectedGuide {
+function guideFromLandmarks(lm: { x: number; y: number; z?: number }[], canvas: HTMLCanvasElement): DetectedGuide {
 
   // ── 1. Precise eye centers ──────────────────────────────────────────────
   const leftEyeCenter  = avg(pick(lm, LEFT_EYE_IDX));
@@ -290,4 +295,12 @@ function guideFromLandmarks(lm: { x: number; y: number }[], canvas: HTMLCanvasEl
     imageWidth:      canvas.width,
     imageHeight:     canvas.height,
   };
+}
+
+/**
+ * 顔の上下の傾き（度）の推定：額の上端（目印10）とあご先（目印152）の奥行きの差から。
+ * 正＝あご先が奥（うつむき／カメラが顔より上）、負＝あご先が手前（あおり／カメラが顔より下）。
+ */
+export function estimatePitchDeg(p10: { y: number; z: number }, p152: { y: number; z: number }) {
+  return Math.atan2(p152.z - p10.z, p152.y - p10.y) * 180 / Math.PI;
 }

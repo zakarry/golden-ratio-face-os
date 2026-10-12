@@ -11,10 +11,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Download, RefreshCw } from 'lucide-react';
 import { staffMediaUrls, type ParticipantSummary } from '@/lib/pilot/staff';
 import { getSupabaseClient } from '@/lib/supabaseClient';
-import { detectFaceLandmarksWithRaw } from '@/lib/faceLandmarks';
+import { detectFaceLandmarksWithRaw, estimatePitchDeg } from '@/lib/faceLandmarks';
 import { fetchCaptures, jstDate, type CaptureRow } from '@/lib/pilot/staffExport';
 import { fetchAllSurveysForStaff, REFERENCE_KIND_LABEL, type ReferenceKind, type StaffReferenceRow } from '@/lib/pilot/survey';
-import { METRIC_DEFS, formatMetric, correctedValue, SMARTPHONE_CORRECTIONS, SMARTPHONE_NOTE, type MetricDef, type MetricId, type PilotMetrics } from '@/lib/pilot/targetCard';
+import { METRIC_DEFS, computePilotMetrics, formatMetric, correctedValue, SMARTPHONE_CORRECTIONS, SMARTPHONE_NOTE, type MetricDef, type MetricId, type PilotMetrics } from '@/lib/pilot/targetCard';
 import { STRENGTH_LABEL } from '@/lib/pilot/prescription';
 import { buildYosekata, deriveYoseValues, groupAgreeRows, SMARTPHONE_YOSE_CORRECTION, type YoseAgreeItem } from '@/lib/pilot/yosekata';
 import { pickYoseSubject } from '@/lib/pilot/yosekataStaff';
@@ -91,6 +91,7 @@ export default function StaffAnalysis({ list }: { list: ParticipantSummary[] }) 
           <YearCompare subjects={subjects.filter(x => !x.test)} />
           <DistanceScatter captures={captures} list={list} testMode={testMode} />
           <NoseTrial captures={captures} list={list} />
+          <PitchTrial captures={captures} list={list} />
         </>
       )}
     </div>
@@ -576,6 +577,103 @@ function latestOkBefore(recs: NoseRec[]) {
   const by = new Map<string, NoseRec>();
   for (const r of recs) if (r.phase === 'before' && r.ok) { const cur = by.get(r.code); if (!cur || cur.takenAt < r.takenAt) by.set(r.code, r); }
   return Array.from(by.values());
+}
+
+// ── 7. 顔の上下の傾きの試算（保存写真から再検出） ─────────────────────────
+
+interface PitchRec { code: string; phase: string; takenAt: string; ok: boolean; test: boolean; pitch: number; philtrum: number; midlow: number; faceWidthFrac: number }
+
+function corrWithin(recs: { code: string; x: number; y: number }[]) {
+  const by = new Map<string, { x: number; y: number }[]>();
+  for (const r of recs) by.set(r.code, [...(by.get(r.code) ?? []), r]);
+  const dx: number[] = [], dy: number[] = [];
+  let people = 0;
+  for (const a of Array.from(by.values())) {
+    if (a.length < 2) continue;
+    people++;
+    const mx = a.reduce((s, p) => s + p.x, 0) / a.length, my = a.reduce((s, p) => s + p.y, 0) / a.length;
+    for (const p of a) { dx.push(p.x - mx); dy.push(p.y - my); }
+  }
+  const r = regress(dx, dy);
+  return r ? { ...r, people } : null;
+}
+
+function PitchTrial({ captures, list }: { captures: CaptureRow[]; list: ParticipantSummary[] }) {
+  const [state, setState] = useState<'idle' | 'running' | 'done'>('idle');
+  const [progress, setProgress] = useState('');
+  const [recs, setRecs] = useState<PitchRec[] | null>(null);
+  const [y2025, setY2025] = useState<Row2025[] | null>(null);
+  const [saveMsg, setSaveMsg] = useState('');
+  useEffect(() => { import('@/data/mw2025_metrics_v2.json').then(m => setY2025(m.default as unknown as Row2025[])); }, []);
+  const codeOf = new Map(list.map(p => [p.token, p.subjectCode]));
+  const targets = captures.filter(c => c.image_path && codeOf.has(c.participant_token));
+
+  const summarize = (rs: PitchRec[]) => {
+    const real = rs.filter(r => !r.test);
+    const latest = Array.from(real.filter(r => r.phase === 'before' && r.ok).reduce((m, r) => { const c = m.get(r.code); if (!c || c.takenAt < r.takenAt) m.set(r.code, r); return m; }, new Map<string, PitchRec>()).values());
+    const all = (k: 'philtrum' | 'midlow') => regress(real.map(r => r.pitch), real.map(r => r[k]));
+    const within = (k: 'philtrum' | 'midlow') => corrWithin(real.map(r => ({ code: r.code, x: r.pitch, y: r[k] })));
+    return {
+      latestN: latest.length, latestPitchMed: median(latest.map(r => r.pitch)), allN: real.length, allPitchMed: median(real.map(r => r.pitch)),
+      allPitchMin: Math.min(...real.map(r => r.pitch)), allPitchMax: Math.max(...real.map(r => r.pitch)),
+      rAll: { philtrum: all('philtrum'), midlow: all('midlow') }, rWithin: { philtrum: within('philtrum'), midlow: within('midlow') },
+      pitchVsDistance: regress(real.map(r => r.faceWidthFrac), real.map(r => r.pitch)),
+    };
+  };
+
+  const run = async () => {
+    setState('running'); setSaveMsg('');
+    const out: PitchRec[] = [];
+    for (let i = 0; i < targets.length; i += 40) {
+      const chunk = targets.slice(i, i + 40);
+      const urls = await staffMediaUrls(chunk.map(c => c.image_path!));
+      for (const c of chunk) {
+        setProgress(`${out.length + 1} / ${targets.length}`);
+        const url = urls[c.image_path!];
+        if (!url) continue;
+        try {
+          const r = await detectFaceLandmarksWithRaw(url, [10, 152]);
+          if (!r) continue;
+          const g = r.guide, m = computePilotMetrics(g, g.imageWidth!, g.imageHeight!);
+          const code = codeOf.get(c.participant_token)!;
+          out.push({ code, phase: c.phase, takenAt: c.taken_at, ok: c.framing?.ok === true, test: TEST_CODES.has(code.toUpperCase()),
+            pitch: estimatePitchDeg(r.rawPts[10], r.rawPts[152]), philtrum: m.philtrum, midlow: m.zone2 / m.zone3, faceWidthFrac: g.faceRightX - g.faceLeftX });
+        } catch { /* 読めない写真は飛ばす */ }
+      }
+    }
+    setRecs(out); setState('done'); setProgress(`${out.length} / ${targets.length} 枚を測りました`);
+    const r4 = (x: number) => Math.round(x * 1e4) / 1e4;
+    const result = { version: 1, measured: out.length, total: targets.length, summary2026: summarize(out),
+      records: out.map(r => ({ code: r.code, phase: r.phase, takenAt: r.takenAt, ok: r.ok, test: r.test, pitch: r4(r.pitch), philtrum: r4(r.philtrum), midlow: r4(r.midlow), faceWidthFrac: r4(r.faceWidthFrac) })) };
+    const supabase = getSupabaseClient();
+    const { error } = supabase ? await supabase.rpc('pilot_staff_save_analysis', { p_kind: 'pitch_trial', p_result: result }) : { error: { message: 'Supabase 未設定' } };
+    setSaveMsg(error ? `結果を保存できませんでした（${error.message}）` : '結果を保存しました（数値だけ）');
+  };
+
+  const s26 = recs ? summarize(recs) : null;
+  const p25 = (ph: 'before' | 'after') => (y2025 ?? []).filter(r => r.phase === ph && typeof r.pitch === 'number').map(r => r.pitch as number);
+  const f1 = (v: number | null | undefined) => v == null ? '—' : `${v.toFixed(1)}°`;
+  const fr = (x: { r: number } | null) => x ? x.r.toFixed(2) : '—';
+
+  return (
+    <Panel title="7. 顔の上下の傾きの試算（保存写真から再検出）" sub="額の上端（目印10）とあご先（目印152）の奥行きの差から上下の角度を推定。大きいほど、あご先が奥（うつむき／スマホが顔より上）。本番の判定には使っていない" onSave={() => {}} saveLabel="">
+      <div className="flex items-center gap-3 flex-wrap text-xs">
+        <button type="button" onClick={run} disabled={state === 'running' || targets.length === 0} className={ghostBtn}>{state === 'running' ? '測っています…' : `試算する（${targets.length}枚）`}</button>
+        <span className="text-stone-500">{progress}</span>
+        {saveMsg && <span className="text-stone-600">{saveMsg}</span>}
+      </div>
+      <table className="text-xs">
+        <thead><tr className="text-stone-400 text-[10px] text-left"><th className="py-1 px-2">組</th><th className="px-2">傾きの中央値</th><th className="px-2">人中比との相関 r（全体／同じ人の中）</th><th className="px-2">中顔面÷下顔面との相関 r（全体／同じ人の中）</th></tr></thead>
+        <tbody>
+          {s26 && <tr className="border-t border-stone-100"><td className="py-1.5 px-2">2026 今回（全記録 {s26.allN}枚）</td><td className="px-2 tabular-nums">{f1(s26.allPitchMed)}（{f1(s26.allPitchMin)}〜{f1(s26.allPitchMax)}）／最新メイク前 {f1(s26.latestPitchMed)}</td>
+            <td className="px-2 tabular-nums">{fr(s26.rAll.philtrum)}／{fr(s26.rWithin.philtrum)}</td><td className="px-2 tabular-nums">{fr(s26.rAll.midlow)}／{fr(s26.rWithin.midlow)}</td></tr>}
+          {y2025 && (['before', 'after'] as const).map(ph => (
+            <tr key={ph} className="border-t border-stone-100"><td className="py-1.5 px-2">{ph === 'before' ? '2025 説明会（スマホ）' : '2025 スタジオ'}</td><td className="px-2 tabular-nums">{f1(median(p25(ph)))}</td><td className="px-2 text-stone-400" colSpan={2}>（去年の値は手元で計算済み）</td></tr>
+          ))}
+        </tbody>
+      </table>
+    </Panel>
+  );
 }
 
 // ── 共通 ───────────────────────────────────────────────────────────

@@ -27,7 +27,8 @@
   "noseFromEye_lm2": 0.35675,
   "philtrum_lm94": 0.30654,
   "midlow_lm94": 1.06757,
-  "noseFromEye_lm94": 0.35508
+  "noseFromEye_lm94": 0.35508,
+  "pitch": 13.36
  },
  {
   "id": "P01",
@@ -57,7 +58,8 @@
   "noseFromEye_lm2": 0.36383,
   "philtrum_lm94": 0.31779,
   "midlow_lm94": 1.14828,
-  "noseFromEye_lm94": 0.36357
+  "noseFromEye_lm94": 0.36357,
+  "pitch": 14.06
  },
  {
   "id": "P02",
@@ -87,7 +89,8 @@
   "noseFromEye_lm2": 0.36974,
   "philtrum_lm94": 0.29747,
   "midlow_lm94": 1.13296,
-  "noseFromEye_lm94": 0.37047
+  "noseFromEye_lm94": 0.37047,
+  "pitch": 13.18
  },
  {
   "id": "P02",
@@ -117,7 +120,8 @@
   "noseFromEye_lm2": 0.37251,
   "philtrum_lm94": 0.32876,
   "midlow_lm94": 1.1174,
-  "noseFromEye_lm94": 0.37007
+  "noseFromEye_lm94": 0.37007,
+  "pitch": 8.33
  },
  {
   "id": "P03",
@@ -147,7 +151,8 @@
   "noseFromEye_lm2": 0.36057,
   "philtrum_lm94": 0.35064,
   "midlow_lm94": 1.16271,
-  "noseFromEye_lm94": 0.3558
+  "noseFromEye_lm94": 0.3558,
+  "pitch": 12.97
  },
  {
   "id": "P03",
@@ -177,7 +182,8 @@
   "noseFromEye_lm2": 0.37838,
   "philtrum_lm94": 0.33226,
   "midlow_lm94": 1.29777,
-  "noseFromEye_lm94": 0.37594
+  "noseFromEye_lm94": 0.37594,
+  "pitch": 15.06
  },
  {
   "id": "P04",
@@ -207,7 +213,8 @@
   "noseFromEye_lm2": 0.35581,
   "philtrum_lm94": 0.3172,
   "midlow_lm94": 1.1263,
-  "noseFromEye_lm94": 0.35346
+  "noseFromEye_lm94": 0.35346,
+  "pitch": 17.5
  },
  {
   "id": "P04",
@@ -237,7 +244,8 @@
   "noseFromEye_lm2": 0.37575,
   "philtrum_lm94": 0.36658,
   "midlow_lm94": 1.23788,
-  "noseFromEye_lm94": 0.37058
+  "noseFromEye_lm94": 0.37058,
+  "pitch": 14.88
  },
  {
   "id": "P05",
@@ -267,7 +275,8 @@
   "noseFromEye_lm2": 0.36397,
   "philtrum_lm94": 0.31002,
   "midlow_lm94": 1.106,
-  "noseFromEye_lm94": 0.36245
+  "noseFromEye_lm94": 0.36245,
+  "pitch": 13.95
  },
  {
   "id": "P05",
@@ -297,7 +306,8 @@
   "noseFromEye_lm2": 0.35736,
   "philtrum_lm94": 0.33894,
   "midlow_lm94": 1.08016,
-  "noseFromEye_lm94": 0.35568
+  "noseFromEye_lm94": 0.35568,
+  "pitch": 12.1
  },
  {
   "id": "P06",
@@ -327,7 +337,8 @@
   "noseFromEye_lm2": 0.38544,
   "philtrum_lm94": 0.31267,
   "midlow_lm94": 1.17346,
-  "noseFromEye_lm94": 0.38353
+  "noseFromEye_lm94": 0.38353,
+  "pitch": 13.24
  },
  {
   "id": "P06",
@@ -357,7 +368,8 @@
   "noseFromEye_lm2": 0.40176,
   "philtrum_lm94": 0.32586,
   "midlow_lm94": 1.3057,
-  "noseFromEye_lm94": 0.39642
+  "noseFromEye_lm94": 0.39642,
+  "pitch": 12.59
  },
  {
   "id": "P07",
@@ -387,7 +399,8 @@
   "noseFromEye_lm2": 0.37606,
   "philtrum_lm94": 0.29687,
   "midlow_lm94": 1.21627,
-  "noseFromEye_lm94": 0.37378
+  "noseFromEye_lm94": 0.37378,
+  "pitch": 12.11
  },
  {
   "id": "P07",
@@ -417,7 +430,8 @@
   "noseFromEye_lm2": 0.34203,
   "philtrum_lm94": 0.35304,
   "midlow_lm94": 1.22507,
-  "noseFromEye_lm94": 0.33645
+  "noseFromEye_lm94": 0.33645,
+  "pitch": 8.75
  },
  {
   "id": "P08",
@@ -447,7 +461,8 @@
   "noseFromEye_lm2": 0.36087,
   "philtrum_lm94": 0.37446,
   "midlow_lm94": 1.13227,
-  "noseFromEye_lm94": 0.35509
+  "noseFromEye_lm94": 0.35509,
+  "pitch": 16.75
  },
  {
   "id": "P08",
@@ -477,7 +492,8 @@
   "noseFromEye_lm2": 0.35564,
   "philtrum_lm94": 0.35169,
   "midlow_lm94": 1.20134,
-  "noseFromEye_lm94": 0.35058
+  "noseFromEye_lm94": 0.35058,
+  "pitch": 14.95
  },
  {
   "id": "P09",
@@ -507,7 +523,8 @@
   "noseFromEye_lm2": 0.38117,
   "philtrum_lm94": 0.34732,
   "midlow_lm94": 1.11424,
-  "noseFromEye_lm94": 0.37615
+  "noseFromEye_lm94": 0.37615,
+  "pitch": 8.94
  },
  {
   "id": "P09",
@@ -537,7 +554,8 @@
   "noseFromEye_lm2": 0.36096,
   "philtrum_lm94": 0.33991,
   "midlow_lm94": 1.15255,
-  "noseFromEye_lm94": 0.35696
+  "noseFromEye_lm94": 0.35696,
+  "pitch": 12.66
  },
  {
   "id": "P10",
@@ -567,7 +585,8 @@
   "noseFromEye_lm2": 0.38203,
   "philtrum_lm94": 0.3304,
   "midlow_lm94": 1.20142,
-  "noseFromEye_lm94": 0.37944
+  "noseFromEye_lm94": 0.37944,
+  "pitch": 17.21
  },
  {
   "id": "P10",
@@ -597,7 +616,8 @@
   "noseFromEye_lm2": 0.38808,
   "philtrum_lm94": 0.36224,
   "midlow_lm94": 1.20972,
-  "noseFromEye_lm94": 0.38378
+  "noseFromEye_lm94": 0.38378,
+  "pitch": 15.31
  },
  {
   "id": "P11",
@@ -627,7 +647,8 @@
   "noseFromEye_lm2": 0.3763,
   "philtrum_lm94": 0.36425,
   "midlow_lm94": 1.3377,
-  "noseFromEye_lm94": 0.37194
+  "noseFromEye_lm94": 0.37194,
+  "pitch": 17.66
  },
  {
   "id": "P11",
@@ -657,7 +678,8 @@
   "noseFromEye_lm2": 0.3682,
   "philtrum_lm94": 0.31018,
   "midlow_lm94": 1.37305,
-  "noseFromEye_lm94": 0.36744
+  "noseFromEye_lm94": 0.36744,
+  "pitch": 19.77
  },
  {
   "id": "P12",
@@ -687,7 +709,8 @@
   "noseFromEye_lm2": 0.3951,
   "philtrum_lm94": 0.33999,
   "midlow_lm94": 1.25651,
-  "noseFromEye_lm94": 0.39075
+  "noseFromEye_lm94": 0.39075,
+  "pitch": 11.51
  },
  {
   "id": "P12",
@@ -717,7 +740,8 @@
   "noseFromEye_lm2": 0.40962,
   "philtrum_lm94": 0.38026,
   "midlow_lm94": 1.31617,
-  "noseFromEye_lm94": 0.40408
+  "noseFromEye_lm94": 0.40408,
+  "pitch": 13.29
  },
  {
   "id": "P13",
@@ -747,7 +771,8 @@
   "noseFromEye_lm2": 0.37675,
   "philtrum_lm94": 0.3549,
   "midlow_lm94": 1.25447,
-  "noseFromEye_lm94": 0.37198
+  "noseFromEye_lm94": 0.37198,
+  "pitch": 15.4
  },
  {
   "id": "P13",
@@ -777,7 +802,8 @@
   "noseFromEye_lm2": 0.37802,
   "philtrum_lm94": 0.35395,
   "midlow_lm94": 1.34539,
-  "noseFromEye_lm94": 0.37471
+  "noseFromEye_lm94": 0.37471,
+  "pitch": 14.67
  },
  {
   "id": "P14",
@@ -807,7 +833,8 @@
   "noseFromEye_lm2": 0.38049,
   "philtrum_lm94": 0.33743,
   "midlow_lm94": 1.17633,
-  "noseFromEye_lm94": 0.37676
+  "noseFromEye_lm94": 0.37676,
+  "pitch": 16.78
  },
  {
   "id": "P14",
@@ -837,7 +864,8 @@
   "noseFromEye_lm2": 0.35809,
   "philtrum_lm94": 0.30469,
   "midlow_lm94": 1.14844,
-  "noseFromEye_lm94": 0.35523
+  "noseFromEye_lm94": 0.35523,
+  "pitch": 16.23
  },
  {
   "id": "P15",
@@ -867,7 +895,8 @@
   "noseFromEye_lm2": 0.38775,
   "philtrum_lm94": 0.27569,
   "midlow_lm94": 1.20168,
-  "noseFromEye_lm94": 0.3907
+  "noseFromEye_lm94": 0.3907,
+  "pitch": 18.49
  },
  {
   "id": "P15",
@@ -897,7 +926,8 @@
   "noseFromEye_lm2": 0.3869,
   "philtrum_lm94": 0.30233,
   "midlow_lm94": 1.22587,
-  "noseFromEye_lm94": 0.38429
+  "noseFromEye_lm94": 0.38429,
+  "pitch": 15.3
  },
  {
   "id": "P16",
@@ -927,7 +957,8 @@
   "noseFromEye_lm2": 0.3684,
   "philtrum_lm94": 0.32079,
   "midlow_lm94": 1.2582,
-  "noseFromEye_lm94": 0.36586
+  "noseFromEye_lm94": 0.36586,
+  "pitch": 16.02
  },
  {
   "id": "P16",
@@ -957,7 +988,8 @@
   "noseFromEye_lm2": 0.39306,
   "philtrum_lm94": 0.30773,
   "midlow_lm94": 1.46098,
-  "noseFromEye_lm94": 0.39322
+  "noseFromEye_lm94": 0.39322,
+  "pitch": 19.27
  },
  {
   "id": "P17",
@@ -987,7 +1019,8 @@
   "noseFromEye_lm2": 0.38397,
   "philtrum_lm94": 0.4077,
   "midlow_lm94": 1.19397,
-  "noseFromEye_lm94": 0.37691
+  "noseFromEye_lm94": 0.37691,
+  "pitch": 11.79
  },
  {
   "id": "P17",
@@ -1017,7 +1050,8 @@
   "noseFromEye_lm2": 0.39838,
   "philtrum_lm94": 0.37652,
   "midlow_lm94": 1.20743,
-  "noseFromEye_lm94": 0.39425
+  "noseFromEye_lm94": 0.39425,
+  "pitch": 14.8
  },
  {
   "id": "P18",
@@ -1047,7 +1081,8 @@
   "noseFromEye_lm2": 0.38191,
   "philtrum_lm94": 0.35755,
   "midlow_lm94": 1.34662,
-  "noseFromEye_lm94": 0.38032
+  "noseFromEye_lm94": 0.38032,
+  "pitch": 18.68
  },
  {
   "id": "P18",
@@ -1077,7 +1112,8 @@
   "noseFromEye_lm2": 0.39578,
   "philtrum_lm94": 0.3127,
   "midlow_lm94": 1.34522,
-  "noseFromEye_lm94": 0.39462
+  "noseFromEye_lm94": 0.39462,
+  "pitch": 13.4
  },
  {
   "id": "P19",
@@ -1107,7 +1143,8 @@
   "noseFromEye_lm2": 0.41145,
   "philtrum_lm94": 0.34623,
   "midlow_lm94": 1.1938,
-  "noseFromEye_lm94": 0.40758
+  "noseFromEye_lm94": 0.40758,
+  "pitch": 11.02
  },
  {
   "id": "P19",
@@ -1137,7 +1174,8 @@
   "noseFromEye_lm2": 0.42654,
   "philtrum_lm94": 0.34696,
   "midlow_lm94": 1.35891,
-  "noseFromEye_lm94": 0.42338
+  "noseFromEye_lm94": 0.42338,
+  "pitch": 13.21
  },
  {
   "id": "P20",
@@ -1167,7 +1205,8 @@
   "noseFromEye_lm2": 0.37544,
   "philtrum_lm94": 0.31354,
   "midlow_lm94": 1.10006,
-  "noseFromEye_lm94": 0.37463
+  "noseFromEye_lm94": 0.37463,
+  "pitch": 13.35
  },
  {
   "id": "P20",
@@ -1197,7 +1236,8 @@
   "noseFromEye_lm2": 0.37355,
   "philtrum_lm94": 0.32053,
   "midlow_lm94": 1.15065,
-  "noseFromEye_lm94": 0.37099
+  "noseFromEye_lm94": 0.37099,
+  "pitch": 16.2
  },
  {
   "id": "P21",
@@ -1227,7 +1267,8 @@
   "noseFromEye_lm2": 0.36355,
   "philtrum_lm94": 0.31865,
   "midlow_lm94": 1.08578,
-  "noseFromEye_lm94": 0.3612
+  "noseFromEye_lm94": 0.3612,
+  "pitch": 16.82
  },
  {
   "id": "P21",
@@ -1257,7 +1298,8 @@
   "noseFromEye_lm2": 0.37399,
   "philtrum_lm94": 0.30636,
   "midlow_lm94": 1.14716,
-  "noseFromEye_lm94": 0.36881
+  "noseFromEye_lm94": 0.36881,
+  "pitch": 13.85
  },
  {
   "id": "P22",
@@ -1287,7 +1329,8 @@
   "noseFromEye_lm2": 0.39384,
   "philtrum_lm94": 0.354,
   "midlow_lm94": 1.25402,
-  "noseFromEye_lm94": 0.38943
+  "noseFromEye_lm94": 0.38943,
+  "pitch": 11.81
  },
  {
   "id": "P22",
@@ -1317,7 +1360,8 @@
   "noseFromEye_lm2": 0.39914,
   "philtrum_lm94": 0.30263,
   "midlow_lm94": 1.26302,
-  "noseFromEye_lm94": 0.40095
+  "noseFromEye_lm94": 0.40095,
+  "pitch": 15.57
  },
  {
   "id": "P23",
@@ -1347,7 +1391,8 @@
   "noseFromEye_lm2": 0.3968,
   "philtrum_lm94": 0.31819,
   "midlow_lm94": 1.19663,
-  "noseFromEye_lm94": 0.3959
+  "noseFromEye_lm94": 0.3959,
+  "pitch": 16.96
  },
  {
   "id": "P23",
@@ -1377,7 +1422,8 @@
   "noseFromEye_lm2": 0.38343,
   "philtrum_lm94": 0.31419,
   "midlow_lm94": 1.22764,
-  "noseFromEye_lm94": 0.38512
+  "noseFromEye_lm94": 0.38512,
+  "pitch": 11.87
  },
  {
   "id": "P24",
@@ -1407,7 +1453,8 @@
   "noseFromEye_lm2": 0.34282,
   "philtrum_lm94": 0.30408,
   "midlow_lm94": 1.03252,
-  "noseFromEye_lm94": 0.34201
+  "noseFromEye_lm94": 0.34201,
+  "pitch": 12.01
  },
  {
   "id": "P24",
@@ -1437,7 +1484,8 @@
   "noseFromEye_lm2": 0.34694,
   "philtrum_lm94": 0.353,
   "midlow_lm94": 1.07598,
-  "noseFromEye_lm94": 0.33999
+  "noseFromEye_lm94": 0.33999,
+  "pitch": 6.94
  },
  {
   "id": "P25",
@@ -1467,7 +1515,8 @@
   "noseFromEye_lm2": 0.36835,
   "philtrum_lm94": 0.32025,
   "midlow_lm94": 1.08634,
-  "noseFromEye_lm94": 0.36675
+  "noseFromEye_lm94": 0.36675,
+  "pitch": 13.85
  },
  {
   "id": "P25",
@@ -1497,7 +1546,8 @@
   "noseFromEye_lm2": 0.38448,
   "philtrum_lm94": 0.32754,
   "midlow_lm94": 1.18121,
-  "noseFromEye_lm94": 0.38366
+  "noseFromEye_lm94": 0.38366,
+  "pitch": 13.35
  },
  {
   "id": "P26",
@@ -1527,7 +1577,8 @@
   "noseFromEye_lm2": 0.39133,
   "philtrum_lm94": 0.29089,
   "midlow_lm94": 1.21321,
-  "noseFromEye_lm94": 0.39135
+  "noseFromEye_lm94": 0.39135,
+  "pitch": 14.49
  },
  {
   "id": "P26",
@@ -1557,7 +1608,8 @@
   "noseFromEye_lm2": 0.38783,
   "philtrum_lm94": 0.33213,
   "midlow_lm94": 1.2544,
-  "noseFromEye_lm94": 0.38441
+  "noseFromEye_lm94": 0.38441,
+  "pitch": 10.59
  },
  {
   "id": "P27",
@@ -1587,7 +1639,8 @@
   "noseFromEye_lm2": 0.36019,
   "philtrum_lm94": 0.38626,
   "midlow_lm94": 1.11706,
-  "noseFromEye_lm94": 0.35406
+  "noseFromEye_lm94": 0.35406,
+  "pitch": 10.68
  },
  {
   "id": "P27",
@@ -1617,7 +1670,8 @@
   "noseFromEye_lm2": 0.35379,
   "philtrum_lm94": 0.31251,
   "midlow_lm94": 1.12249,
-  "noseFromEye_lm94": 0.34918
+  "noseFromEye_lm94": 0.34918,
+  "pitch": 11.74
  },
  {
   "id": "P28",
@@ -1647,7 +1701,8 @@
   "noseFromEye_lm2": 0.37925,
   "philtrum_lm94": 0.34276,
   "midlow_lm94": 1.11849,
-  "noseFromEye_lm94": 0.37665
+  "noseFromEye_lm94": 0.37665,
+  "pitch": 14.6
  },
  {
   "id": "P28",
@@ -1677,6 +1732,7 @@
   "noseFromEye_lm2": 0.36822,
   "philtrum_lm94": 0.37434,
   "midlow_lm94": 1.11426,
-  "noseFromEye_lm94": 0.36056
+  "noseFromEye_lm94": 0.36056,
+  "pitch": 11.18
  }
 ]
