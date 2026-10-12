@@ -108,7 +108,8 @@ export interface YoseResult {
 export interface Tri { base: number; height: number; shape: number }
 
 // 2026-10-13：目幅の理想 0.25→0.20、スマホ補正（目間距離 −0.014）を理想との比較に追加
-export const YOSEKATA_VERSION = 'yosekata-2026-10-13';
+// 2026-10-13b：中顔面÷下顔面・人中比・目→口の高さを「下顔面」として1件にまとめる（文章・束ね表）
+export const YOSEKATA_VERSION = 'yosekata-2026-10-13b';
 
 /** 強さの規則（仮）：差が許容幅の2倍まで弱、3倍まで標準、それ以上は強。打ち合わせで直す前提 */
 export function strengthFromRatio(ratio: number): Strength {
@@ -180,6 +181,39 @@ const KIND_LABEL: Record<YoseResult['targetKind'], string> = { ideal: '黄金比
 function fmt(v: number, unit: '' | '°') { return unit === '°' ? `${v.toFixed(1)}°` : v.toFixed(2); }
 function fmtGap(v: number, unit: '' | '°') { return unit === '°' ? `${v > 0 ? '+' : ''}${v.toFixed(1)}°` : `${v > 0 ? '+' : ''}${v.toFixed(3)}`; }
 
+/**
+ * 下顔面：中顔面÷下顔面・人中比・目→口の高さは、どれも「鼻から下で口が下寄り（または顎が短い）」と同時に動くので、
+ * 別々に数えると同じことを3回数えてしまう。近づけるところでは1件にまとめ、技法は重ねずに1回ずつ。
+ */
+export const LOWER_FACE_IDS: YoseMetricId[] = ['midlow', 'philtrum', 'triH'];
+export const LOWER_FACE_LABEL = '下顔面';
+
+export interface YoseAgreeItem {
+  /** 指標の id、または 'lower'（下顔面のまとめ） */
+  key: YoseMetricId | 'lower';
+  label: string;
+  rows: YoseRow[];
+  /** まとめの強さ＝いちばん大きくずれている指標の強さ */
+  strength: Strength;
+  ratio: number;
+  /** 重なりを除いた技法 */
+  techniques: Technique[];
+}
+
+/** 近づけるところ（agree）を、下顔面の3指標だけ1件にまとめて返す。大きい順 */
+export function groupAgreeRows(rows: YoseRow[]): YoseAgreeItem[] {
+  const agree = rows.filter(x => x.relation === 'agree');
+  const lower = agree.filter(x => LOWER_FACE_IDS.includes(x.id));
+  const items: YoseAgreeItem[] = agree.filter(x => !LOWER_FACE_IDS.includes(x.id))
+    .map(x => ({ key: x.id, label: x.label, rows: [x], strength: x.strength!, ratio: x.ratio, techniques: x.techniques }));
+  if (lower.length) {
+    const top = lower.reduce((a, b) => (b.ratio > a.ratio ? b : a));
+    const techniques = Array.from(new Map(lower.flatMap(x => x.techniques).map(t => [t.id, t])).values());
+    items.push({ key: 'lower', label: LOWER_FACE_LABEL, rows: [...lower].sort((a, b) => b.ratio - a.ratio), strength: top.strength!, ratio: top.ratio, techniques });
+  }
+  return items.sort((a, b) => b.ratio - a.ratio);
+}
+
 /** 文章化。すべて rows から機械的に出す（言葉を足さない） */
 export function yosekataToText(r: YoseResult): string {
   const L: string[] = [];
@@ -194,9 +228,16 @@ export function yosekataToText(r: YoseResult): string {
   if (same.length) L.push('似ているところ：' + same.map(x => `${x.label}（本人${fmt(x.self, x.unit)} / ${tn}${fmt(x.target, x.unit)}）`).join('、') + '。ここは触らない。');
   if (agree.length) {
     L.push(r.targetKind === 'ideal' ? '近づけるところ：' : '近づけるところ（黄金比も同じ方向）：');
-    for (const x of agree) {
-      const tech = x.techniques.length ? x.techniques.map(y => y.name).join('／') : '処方表に技法なし';
-      L.push(`　・${x.label}を${x.direction}　差${fmtGap(x.gap, x.unit)}（許容幅の${x.ratio.toFixed(1)}倍→${STRENGTH_LABEL[x.strength!]}）　技法：${tech}`);
+    for (const g of groupAgreeRows(r.rows)) {
+      const tech = g.techniques.length ? g.techniques.map(y => y.name).join('／') : '処方表に技法なし';
+      if (g.key !== 'lower') {
+        const x = g.rows[0];
+        L.push(`　・${x.label}を${x.direction}　差${fmtGap(x.gap, x.unit)}（許容幅の${x.ratio.toFixed(1)}倍→${STRENGTH_LABEL[x.strength!]}）　技法：${tech}`);
+        continue;
+      }
+      L.push(`　・${LOWER_FACE_LABEL}（${g.rows.map(x => x.label.replace(/（.*?）/g, '')).join('・')}をまとめて1件）→${STRENGTH_LABEL[g.strength]}`);
+      for (const x of g.rows) L.push(`　　${x.label}を${x.direction}　差${fmtGap(x.gap, x.unit)}（許容幅の${x.ratio.toFixed(1)}倍）`);
+      L.push(`　　技法：${tech}`);
     }
   }
   if (conflict.length) {

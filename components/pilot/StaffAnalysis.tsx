@@ -14,7 +14,7 @@ import { fetchCaptures, jstDate, type CaptureRow } from '@/lib/pilot/staffExport
 import { fetchAllSurveysForStaff, REFERENCE_KIND_LABEL, type ReferenceKind, type StaffReferenceRow } from '@/lib/pilot/survey';
 import { METRIC_DEFS, formatMetric, correctedValue, SMARTPHONE_CORRECTIONS, SMARTPHONE_NOTE, type MetricDef, type MetricId, type PilotMetrics } from '@/lib/pilot/targetCard';
 import { STRENGTH_LABEL } from '@/lib/pilot/prescription';
-import { buildYosekata, deriveYoseValues, SMARTPHONE_YOSE_CORRECTION, type YoseRow } from '@/lib/pilot/yosekata';
+import { buildYosekata, deriveYoseValues, groupAgreeRows, SMARTPHONE_YOSE_CORRECTION, type YoseAgreeItem } from '@/lib/pilot/yosekata';
 import { pickYoseSubject } from '@/lib/pilot/yosekataStaff';
 
 /** テスト参加者（灰色で区別、または除外） */
@@ -86,6 +86,8 @@ export default function StaffAnalysis({ list }: { list: ParticipantSummary[] }) 
           <TriangleScatter subjects={subjects} refs={refs} />
           <Histograms subjects={subjects} />
           <BundleTable subjects={subjects} />
+          <YearCompare subjects={subjects.filter(x => !x.test)} />
+          <DistanceScatter captures={captures} list={list} testMode={testMode} />
         </>
       )}
     </div>
@@ -115,11 +117,15 @@ function TriangleScatter({ subjects, refs }: { subjects: Subject[]; refs: StaffR
   const X = (v: number) => L + (v - x0) / (x1 - x0) * (W - L - R);
   const Y = (v: number) => H - B - (v - y0) / (y1 - y0) * (H - T - B);
   // コードのラベルが重ならないよう、右上→右下→左上→左下→さらに上下の順に空いている位置を選ぶ
-  const placed: { x: number; y: number; w: number; h: number }[] = [];
+  // 点そのものも障害物にする（ラベルが別の点に隠れないように）
+  const placed: { x: number; y: number; w: number; h: number }[] = [
+    ...subjects.map(s => ({ x: X(s.base) - 5, y: Y(s.height) - 5, w: 10, h: 10 })),
+    { x: X(ideal.x) - 7, y: Y(ideal.y) - 7, w: 14, h: 14 },
+  ];
   const hit = (b: { x: number; y: number; w: number; h: number }) => placed.some(o => b.x < o.x + o.w && o.x < b.x + b.w && b.y < o.y + o.h && o.y < b.y + b.h);
   const labelPos = new Map(subjects.map(s => {
     const cx = X(s.base), cy = Y(s.height), w = s.p.subjectCode.length * 6.4 + 2, h = 11;
-    const cands = [[7, -6], [7, 13], [-7 - w, -6], [-7 - w, 13], [7, -18], [7, 25], [-7 - w, -18], [-7 - w, 25]];
+    const cands = [[7, -6], [7, 13], [-7 - w, -6], [-7 - w, 13], [7, -18], [7, 25], [-7 - w, -18], [-7 - w, 25], [-w / 2, -10], [-w / 2, 20], [12, 4], [-12 - w, 4]];
     let pick = cands[0];
     for (const c of cands) { const b = { x: cx + c[0], y: cy + c[1] - 9, w, h }; if (!hit(b)) { pick = c; break; } }
     placed.push({ x: cx + pick[0], y: cy + pick[1] - 9, w, h });
@@ -245,19 +251,22 @@ function Hist({ def, subjects, reference, svgRef }: { def: MetricDef; subjects: 
 
 // ── 3. 束ね表 ──────────────────────────────────────────────────────
 
-interface BundleRow { s: Subject; agree: YoseRow[]; total: number }
+interface BundleRow { s: Subject; agree: YoseAgreeItem[]; total: number }
 
 function BundleTable({ subjects }: { subjects: Subject[] }) {
   const rows = useMemo<BundleRow[]>(() => subjects.map(s => {
     const r = buildYosekata(s.p.subjectCode, s.metrics, { name: '黄金比', kind: 'ideal', metrics: null }, { selfCorrection: SMARTPHONE_YOSE_CORRECTION });
-    const agree = r.rows.filter(x => x.relation === 'agree').sort((a, b) => b.ratio - a.ratio);
+    // 下顔面（中顔面÷下顔面・人中比・目→口の高さ）は1件として数える
+    const agree = groupAgreeRows(r.rows);
     return { s, agree, total: agree.reduce((a, x) => a + x.ratio, 0) };
   }).sort((a, b) => Number(a.s.test) - Number(b.s.test) || b.agree.length - a.agree.length || b.total - a.total), [subjects]);
-  const item = (x: YoseRow) => `${x.label.replace(/（.*?）/g, '')} ${x.direction}（${STRENGTH_LABEL[x.strength!]}）`;
-  const tone = (x: YoseRow) => x.strength === 'strong' ? 'bg-rose-50 border-rose-200 text-rose-800' : x.strength === 'standard' ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-stone-50 border-stone-200 text-stone-700';
+  const item = (g: YoseAgreeItem) => g.key === 'lower'
+    ? `下顔面：${g.rows.map(x => x.direction).join('・')}（${STRENGTH_LABEL[g.strength]}）`
+    : `${g.label.replace(/（.*?）/g, '')} ${g.rows[0].direction}（${STRENGTH_LABEL[g.strength]}）`;
+  const tone = (x: YoseAgreeItem) => x.strength === 'strong' ? 'bg-rose-50 border-rose-200 text-rose-800' : x.strength === 'standard' ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-stone-50 border-stone-200 text-stone-700';
 
   return (
-    <Panel title="3. 束ね表（黄金比へ近づけるところ）" sub={`近づける項目が多い順（同数なら差の大きい順）。強＝赤、標準＝黄、弱＝灰。額が推定の指標は入れていない。目間距離は${SMARTPHONE_NOTE}つき`} onSave={() => saveTablePng(rows.map(r => ({ code: r.s.p.subjectCode, name: r.s.p.name, date: jstDate(r.s.takenAt), test: r.s.test, items: r.agree.map(item) })))}>
+    <Panel title="3. 束ね表（黄金比へ近づけるところ）" sub={`近づける項目が多い順（同数なら差の大きい順）。強＝赤、標準＝黄、弱＝灰。下顔面（中顔面÷下顔面・人中比・目→口の高さ）は1件として数える。額が推定の指標は入れていない。目間距離は${SMARTPHONE_NOTE}つき`} onSave={() => saveTablePng(rows.map(r => ({ code: r.s.p.subjectCode, name: r.s.p.name, date: jstDate(r.s.takenAt), test: r.s.test, items: r.agree.map(item) })))}>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead><tr className="text-stone-400 text-[10px] text-left"><th className="py-1 px-2">順</th><th className="px-2">コード</th><th className="px-2">名前</th><th className="px-2">撮影日</th><th className="px-2 text-right">数</th><th className="px-2">近づけるところ（方向・強さ）</th></tr></thead>
@@ -270,12 +279,162 @@ function BundleTable({ subjects }: { subjects: Subject[] }) {
               <td className="px-2 text-right tabular-nums">{r.agree.length}</td>
               <td className="px-2 py-1"><div className="flex flex-wrap gap-1">
                 {r.agree.length === 0 ? <span className="text-stone-400">なし（配置は揃っている）</span>
-                  : r.agree.map(x => <span key={x.id} className={`rounded-full border px-2 py-0.5 ${r.s.test ? 'bg-stone-50 border-stone-200 text-stone-400' : tone(x)}`}>{item(x)}</span>)}
+                  : r.agree.map(x => <span key={x.key} className={`rounded-full border px-2 py-0.5 ${r.s.test ? 'bg-stone-50 border-stone-200 text-stone-400' : tone(x)}`}>{item(x)}</span>)}
               </div></td>
             </tr>
           ))}</tbody>
         </table>
       </div>
+    </Panel>
+  );
+}
+
+// ── 4. 去年との比較 ────────────────────────────────────────────────
+
+interface Row2025 { id: string; phase: 'before' | 'after'; ok: boolean; faceWidthFrac: number; [k: string]: string | number | boolean }
+
+/** 3つの組：2026（スマホ）、2025 before（スマホ説明会）、2025 after（スタジオ）。スマホの2組は目間距離に補正を入れて黄金比と比べる */
+function YearCompare({ subjects }: { subjects: Subject[] }) {
+  const [y2025, setY2025] = useState<Row2025[] | null>(null);
+  const refs = useRef<Record<string, SVGSVGElement | null>>({});
+  useEffect(() => { import('@/data/mw2025_metrics.json').then(m => setY2025(m.default as unknown as Row2025[])); }, []);
+  if (!y2025) return null;
+  const groups = [
+    { label: '2026 今回（スマホ）', smartphone: true, vals: (id: MetricId) => subjects.map(x => x.metrics[id]) },
+    { label: '2025 説明会（スマホ）', smartphone: true, vals: (id: MetricId) => y2025.filter(r => r.phase === 'before' && r.ok).map(r => r[id] as number) },
+    { label: '2025 スタジオ', smartphone: false, vals: (id: MetricId) => y2025.filter(r => r.phase === 'after' && r.ok).map(r => r[id] as number) },
+  ];
+  const save = (d: MetricDef) => saveSvgPng(refs.current[d.id] ?? null, `分析_去年比較_${d.label.replace(/（.*?）/g, '')}.png`);
+  return (
+    <Panel title="4. 去年との比較" sub={`同じ指標を3つの組で並べる。青の点線＝その組の中央値、赤線＝黄金比、灰色の帯＝許容幅。スマホの2組の目間距離は${SMARTPHONE_NOTE}つき（スタジオは補正なし）`}
+      onSave={async () => { for (const d of METRIC_DEFS) await save(d); }} saveLabel="12枚とも保存">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {METRIC_DEFS.map(d => (
+          <div key={d.id} className="space-y-1">
+            <CompareChart def={d} reference={FOREHEAD_REF.has(d.id)}
+              groups={groups.map(g => ({ label: g.label, vals: g.vals(d.id).filter(v => typeof v === 'number' && isFinite(v)).map(v => g.smartphone ? correctedValue(d.id, v, SMARTPHONE_CORRECTIONS) : v) }))}
+              svgRef={el => { refs.current[d.id] = el; }} />
+            <button type="button" onClick={() => save(d)} className="text-[10px] text-stone-500 underline">この図を保存</button>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+const median = (a: number[]) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); const n = s.length; return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2; };
+
+function CompareChart({ def, reference, groups, svgRef }: { def: MetricDef; reference: boolean; groups: { label: string; vals: number[] }[]; svgRef: (el: SVGSVGElement | null) => void }) {
+  const all = groups.flatMap(g => g.vals);
+  const lo0 = Math.min(...all, def.ideal - def.tolerance * 2), hi0 = Math.max(...all, def.ideal + def.tolerance * 2);
+  const N = 14, step = (hi0 - lo0) / N || 1;
+  const W = 320, L = 10, R = 10, T = 22, RH = 52, H = T + groups.length * RH + 18;
+  const X = (v: number) => L + (v - lo0) / (hi0 - lo0) * (W - L - R);
+  const bw = (W - L - R) / N;
+  return (
+    <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} width="100%" style={{ fontFamily: FONT, background: '#ffffff', maxWidth: W }} className="rounded-lg border border-stone-100">
+      <text x={8} y={15} fontSize={11} fontWeight={700} fill={INK}>{def.label}{reference ? '（参考・額は推定）' : ''}</text>
+      {groups.map((g, gi) => {
+        const top = T + gi * RH, base = top + RH - 8;
+        const bins = Array.from({ length: N }, () => 0);
+        for (const v of g.vals) bins[Math.min(N - 1, Math.max(0, Math.floor((v - lo0) / step)))]++;
+        const maxC = Math.max(1, ...bins);
+        const md = median(g.vals);
+        const out = g.vals.filter(v => Math.abs(v - def.ideal) > def.tolerance).length;
+        return (
+          <g key={g.label}>
+            <rect x={X(def.ideal - def.tolerance)} y={top + 14} width={X(def.ideal + def.tolerance) - X(def.ideal - def.tolerance)} height={base - top - 14} fill="#e7e5e4" opacity={0.7} />
+            {bins.map((c, i) => c > 0 && <rect key={i} x={L + i * bw + 1} y={base - c / maxC * (base - top - 16)} width={bw - 2} height={c / maxC * (base - top - 16)} fill={INK} />)}
+            <line x1={X(def.ideal)} x2={X(def.ideal)} y1={top + 12} y2={base} stroke={IDEAL} strokeWidth={1.2} />
+            {md != null && <line x1={X(md)} x2={X(md)} y1={top + 12} y2={base} stroke={MEDIAN} strokeWidth={1.5} strokeDasharray="4 3" />}
+            <line x1={L} x2={W - R} y1={base} y2={base} stroke="#d6d3d1" />
+            <text x={L} y={top + 10} fontSize={9} fill={INK}>{`${g.label}　n=${g.vals.length}　中央値 ${md != null ? formatMetric(md, def.unit) : '—'}${reference ? '' : `　範囲外 ${out}人`}`}</text>
+          </g>
+        );
+      })}
+      {[lo0, def.ideal, hi0].map((t, i) => <text key={i} x={X(t)} y={H - 5} fontSize={9} textAnchor={i === 0 ? 'start' : i === 2 ? 'end' : 'middle'} fill={i === 1 ? IDEAL : GRAY}>{formatMetric(t, def.unit)}</text>)}
+    </svg>
+  );
+}
+
+// ── 5. 距離の影響 ──────────────────────────────────────────────────
+
+function regress(xs: number[], ys: number[]) {
+  const n = xs.length;
+  if (n < 3) return null;
+  const mx = xs.reduce((a, v) => a + v, 0) / n, my = ys.reduce((a, v) => a + v, 0) / n;
+  let sxy = 0, sxx = 0, syy = 0;
+  for (let i = 0; i < n; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; syy += (ys[i] - my) ** 2; }
+  if (!sxx || !syy) return null;
+  const slope = sxy / sxx;
+  return { n, r: sxy / Math.sqrt(sxx * syy), slope, icpt: my - slope * mx };
+}
+
+/** 横＝顔の大きさ（画像幅に対する顔幅）、縦＝目間距離 or 人中比（測ったまま・補正なし）。2026の全記録 */
+function DistanceScatter({ captures, list, testMode }: { captures: CaptureRow[]; list: ParticipantSummary[]; testMode: 'gray' | 'exclude' }) {
+  const [metric, setMetric] = useState<'eyeDist' | 'philtrum'>('eyeDist');
+  const svgRef = useRef<SVGSVGElement>(null);
+  const codeOf = new Map(list.map(p => [p.token, p.subjectCode]));
+  const pts = captures.flatMap(c => {
+    const f = (c.framing as { faceWidthFrac?: number } | null)?.faceWidthFrac;
+    const v = c.metrics?.[metric];
+    const code = codeOf.get(c.participant_token);
+    if (typeof f !== 'number' || typeof v !== 'number' || !code) return [];
+    const test = TEST_CODES.has(code.toUpperCase());
+    if (test && testMode === 'exclude') return [];
+    return [{ f, v, code, test }];
+  });
+  if (pts.length < 3) return null;
+  const real = pts.filter(p => !p.test);
+  const all = regress(real.map(p => p.f), real.map(p => p.v));
+  // 同じ人の中での関係（人ごとの平均を引く）＝顔の違いを除いた、距離だけの効果
+  const byCode = new Map<string, typeof real>();
+  for (const p of real) byCode.set(p.code, [...(byCode.get(p.code) ?? []), p]);
+  const multi = Array.from(byCode.values()).filter(a => a.length > 1);
+  const dx: number[] = [], dy: number[] = [];
+  for (const a of multi) {
+    const mf = a.reduce((s, p) => s + p.f, 0) / a.length, mv = a.reduce((s, p) => s + p.v, 0) / a.length;
+    for (const p of a) { dx.push(p.f - mf); dy.push(p.v - mv); }
+  }
+  const within = regress(dx, dy);
+
+  const W = 760, H = 460, L = 60, R = 20, T = 30, B = 50;
+  const xs = pts.map(p => p.f), ys = pts.map(p => p.v);
+  const pad = (lo: number, hi: number) => { const d = (hi - lo) || 0.05; return [lo - d * 0.08, hi + d * 0.08]; };
+  const [x0, x1] = pad(Math.min(...xs), Math.max(...xs));
+  const [y0, y1] = pad(Math.min(...ys), Math.max(...ys));
+  const X = (v: number) => L + (v - x0) / (x1 - x0) * (W - L - R);
+  const Y = (v: number) => H - B - (v - y0) / (y1 - y0) * (H - T - B);
+  const ticks = (a: number, b: number) => Array.from({ length: 7 }, (_, i) => a + (b - a) / 6 * i);
+  const label = metric === 'eyeDist' ? '目間距離（顔幅比）' : '人中比';
+  const fr = (r: number) => `${r >= 0 ? '' : '−'}${Math.abs(r).toFixed(2)}`;
+  const verdict = (r: number) => Math.abs(r) >= 0.4 ? '相関あり（レンズ距離の効果が大きい）' : Math.abs(r) >= 0.2 ? '弱い相関（一部は距離の効果）' : '相関ほぼなし（本当の特徴）';
+
+  return (
+    <Panel title="5. 距離の影響" sub="横＝顔の大きさ（画像の幅に対する顔の幅。大きいほどカメラが近い）、縦＝測ったままの値（補正なし）。2026の全記録。相関があればレンズ距離の効果、なければ本当の特徴"
+      onSave={() => saveSvgPng(svgRef.current, `分析_距離の影響_${metric === 'eyeDist' ? '目間距離' : '人中比'}.png`)}>
+      <div className="flex rounded-lg border border-stone-300 overflow-hidden divide-x divide-stone-300 w-fit text-xs">
+        {([['eyeDist', '目間距離'], ['philtrum', '人中比']] as const).map(([v, l]) => (
+          <button key={v} type="button" onClick={() => setMetric(v)} className={`px-3 py-1.5 ${metric === v ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>{l}</button>
+        ))}
+      </div>
+      <div className="overflow-x-auto">
+        <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} width={W} height={H} style={{ fontFamily: FONT, background: '#ffffff' }}>
+          <text x={L} y={18} fontSize={13} fontWeight={700} fill={INK}>{`顔の大きさ × ${label}　${real.length}枚・${byCode.size}人`}</text>
+          {ticks(x0, x1).map((t, i) => <g key={'x' + i}><line x1={X(t)} x2={X(t)} y1={T} y2={H - B} stroke="#f0eeec" /><text x={X(t)} y={H - B + 15} fontSize={10} textAnchor="middle" fill={GRAY}>{t.toFixed(2)}</text></g>)}
+          {ticks(y0, y1).map((t, i) => <g key={'y' + i}><line x1={L} x2={W - R} y1={Y(t)} y2={Y(t)} stroke="#f0eeec" /><text x={L - 6} y={Y(t) + 3} fontSize={10} textAnchor="end" fill={GRAY}>{t.toFixed(3)}</text></g>)}
+          <text x={(L + W - R) / 2} y={H - 12} fontSize={11} textAnchor="middle" fill={INK}>顔の大きさ（画像幅に対する顔幅）　← 遠い　　近い →</text>
+          <text x={14} y={(T + H - B) / 2} fontSize={11} textAnchor="middle" fill={INK} transform={`rotate(-90 14 ${(T + H - B) / 2})`}>{`${label}（測ったまま）`}</text>
+          {pts.map((p, i) => <circle key={i} cx={X(p.f)} cy={Y(p.v)} r={3.5} fill={p.test ? GRAY : INK} opacity={0.75} />)}
+          {all && <line x1={X(x0)} x2={X(x1)} y1={Y(all.icpt + all.slope * x0)} y2={Y(all.icpt + all.slope * x1)} stroke={IDEAL} strokeWidth={2} />}
+          <g transform={`translate(${L + 8}, ${T + 14})`}>
+            <rect x={-6} y={-12} width={470} height={40} fill="#ffffff" opacity={0.9} rx={4} />
+            {all && <text fontSize={11} fill={IDEAL}>{`全体：r = ${fr(all.r)}、傾き ${all.slope.toFixed(3)}（顔の大きさ +0.1 で ${(all.slope * 0.1).toFixed(4)}）`}</text>}
+            {within && <text y={16} fontSize={11} fill={INK}>{`同じ人の中：r = ${fr(within.r)}、傾き ${within.slope.toFixed(3)}（${multi.length}人・${within.n}枚）　${verdict(within.r)}`}</text>}
+          </g>
+        </svg>
+      </div>
+      <p className="text-[11px] text-stone-500">「全体」は人ごとの顔の違いも混ざります。距離だけの効果は「同じ人の中」（同じ人を近い・遠いで撮った差）で見てください。</p>
     </Panel>
   );
 }
