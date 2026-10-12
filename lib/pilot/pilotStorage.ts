@@ -25,6 +25,8 @@ export interface FramingCheck {
   eyeOpen?: { left: number; right: number };
   ok: boolean;
   warnings: string[];
+  /** 理想との比較に入れた目間距離の補正（スマホ撮影 −0.014）。無い記録は補正なしで作ったもの */
+  eyeDistCorrection?: number;
 }
 
 export interface PilotRecord {

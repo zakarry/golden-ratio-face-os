@@ -12,6 +12,7 @@ import { staffMediaUrls } from '@/lib/pilot/staff';
 import { fetchSurveyForStaff, REFERENCE_KIND_LABEL, type StaffReferenceRow } from '@/lib/pilot/survey';
 import type { Tri, YoseResult, YoseRow } from '@/lib/pilot/yosekata';
 import { YOSEKATA_VERSION } from '@/lib/pilot/yosekata';
+import { SMARTPHONE_NOTE } from '@/lib/pilot/targetCard';
 import { buildYoseBundle, fetchRecordGuide, listSavedYosekata, pickYoseSubject, saveYosekata, type SavedYoseRow } from '@/lib/pilot/yosekataStaff';
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' });
@@ -105,6 +106,7 @@ function TargetView({ r }: { r: YoseResult }) {
         </div>
       </div>
       <JudgeTable rows={r.rows} tn={tn} showIdeal={r.targetKind !== 'ideal'} />
+      {r.config.selfCorrection?.eyeDist != null && <p className="text-[10px] text-stone-500">目間距離は{SMARTPHONE_NOTE}を入れて黄金比と比べています{r.targetKind !== 'ideal' && '（この人との差には入れていません）'}。</p>}
       <pre className="whitespace-pre-wrap text-xs text-stone-800 bg-stone-50 rounded-lg p-3 font-sans leading-relaxed">{r.text}</pre>
     </div>
   );

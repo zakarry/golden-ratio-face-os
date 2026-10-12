@@ -26,7 +26,8 @@ export interface MetricDef {
 
 export const METRIC_DEFS: MetricDef[] = [
   { id: 'eyeDist',  label: '目間距離（顔幅比）',     ideal: 0.46,  tolerance: 0.015, unit: '', mmBase: 'faceWidth',  dirLow: '外へ', dirHigh: '内へ' },
-  { id: 'eyeWidth', label: '目幅（顔幅比）',         ideal: 0.25,  tolerance: 0.015, unit: '', mmBase: 'faceWidth',  dirLow: '大きく', dirHigh: '小さく' },
+  // 目幅の理想は顔幅の1/5（寸法図の五分割と同じ定義）。以前は 0.25
+  { id: 'eyeWidth', label: '目幅（顔幅比）',         ideal: 0.20,  tolerance: 0.015, unit: '', mmBase: 'faceWidth',  dirLow: '大きく', dirHigh: '小さく' },
   { id: 'eyeAngle', label: '目の角度',               ideal: 7.5,   tolerance: 3,     unit: '°',                       dirLow: '上げる', dirHigh: '下げる' },
   { id: 'eyeLevel', label: '目の高さ左右差（顔高比）', ideal: 0,   tolerance: 0.01,  unit: '', mmBase: 'faceHeight', dirLow: '揃える', dirHigh: '揃える' },
   { id: 'pupilPos', label: '黒目の位置（目頭0〜目尻1）', ideal: 0.5, tolerance: 0.05, unit: '',                     dirLow: '外へ', dirHigh: '内へ' },
@@ -39,13 +40,27 @@ export const METRIC_DEFS: MetricDef[] = [
   { id: 'philtrum', label: '人中比（鼻〜口／鼻〜顎）', ideal: 1/3,  tolerance: 0.04,  unit: '',                        dirLow: '長く見せる', dirHigh: '短く見せる' },
 ];
 
+/**
+ * スマホ撮影の補正（理想との比較のときだけ足す。前後比較には入れない）
+ * 目間距離はスマホの方が +0.014 大きく出る（2025年ファイナリスト28名の同一人物スマホ／スタジオ比較）
+ */
+export const SMARTPHONE_CORRECTIONS: Partial<Record<MetricId, number>> = { eyeDist: -0.014 };
+export const SMARTPHONE_NOTE = 'スマホ補正 −0.014（2025年28名の同一人物スマホ／スタジオ比較より）';
+
+/** 理想と比べる値（補正つき） */
+export function correctedValue(id: MetricId, v: number, corrections?: Partial<Record<MetricId, number>> | null) {
+  return v + (corrections?.[id] ?? 0);
+}
+
 export interface TargetItem {
   id: MetricId;
   label: string;
   current: number;
   ideal: number;
-  /** ideal − current（符号つき） */
+  /** ideal −（current＋補正）（符号つき） */
   gap: number;
+  /** 理想との比較で current に足した補正（スマホ補正など）。無ければ 0 */
+  correction?: number;
   tolerance: number;
   unit: '' | '°';
   /** 修正対象か（許容幅の外） */
@@ -117,7 +132,7 @@ export function buildTargetCard(
   g: DetectedGuide,
   imageW: number,
   imageH: number,
-  opts: { tolerances?: Partial<Record<MetricId, number>>; irisDiameterPx?: number | null; includeForeheadDependent?: boolean } = {},
+  opts: { tolerances?: Partial<Record<MetricId, number>>; irisDiameterPx?: number | null; includeForeheadDependent?: boolean; corrections?: Partial<Record<MetricId, number>> } = {},
 ): TargetCard {
   const W = (g.faceRightX - g.faceLeftX) * imageW;
   const H = (g.chinLineY - g.foreheadY) * imageH;
@@ -128,7 +143,9 @@ export function buildTargetCard(
   const items: TargetItem[] = METRIC_DEFS.map(def => {
     const current = metrics[def.id];
     const tolerance = opts.tolerances?.[def.id] ?? def.tolerance;
-    const gap = def.ideal - current;
+    // current は測ったままの値。理想との差だけ補正つきで出す（前後比較は current どうしなので補正が入らない）
+    const correction = opts.corrections?.[def.id] ?? 0;
+    const gap = def.ideal - (current + correction);
     // 額（生え際）は検出ではなく推定値なので、額に依存する指標は既定では「参考」扱い（修正対象にしない）
     const measurable = !def.dependsOnForehead || !!opts.includeForeheadDependent;
     const actionable = measurable && Math.abs(gap) > tolerance;
@@ -136,7 +153,7 @@ export function buildTargetCard(
     if (actionable) direction = gap > 0 ? def.dirLow : def.dirHigh;
     let gapMm: number | null = null;
     if (scale && def.mmBase) gapMm = gap * (def.mmBase === 'faceWidth' ? W : H) * scale;
-    return { id: def.id, label: def.label, current, ideal: def.ideal, gap, tolerance, unit: def.unit, actionable, direction, gapMm, dependsOnForehead: !!def.dependsOnForehead };
+    return { id: def.id, label: def.label, current, ideal: def.ideal, gap, correction, tolerance, unit: def.unit, actionable, direction, gapMm, dependsOnForehead: !!def.dependsOnForehead };
   });
 
   return {

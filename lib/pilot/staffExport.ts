@@ -154,7 +154,7 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
         code: codeOf.get(c.participant_token) ?? '', name: nameOf.get(c.participant_token) ?? '', no: sessionNo.get(c.participant_token)?.get(jstDate(c.taken_at)),
         date: jstDate(c.taken_at), time: jstTime(c.taken_at), phase: c.phase === 'before' ? 'メイク前' : 'メイク後',
         ok: c.framing?.ok === false ? '×' : '○', warn: (c.framing?.warnings ?? []).join('・'), bp: c.blueprint_path ? 'あり' : '', dim: c.dimension_path ? 'あり' : '',
-        strengths: yoseStrengths(c.metrics).join('、'),
+        strengths: yoseStrengths(c.metrics, { smartphone: true }).join('、'),
         grFace: c.gr?.faceRatio ?? '', grEye: c.gr?.eyePosition ?? '', grMouth: c.gr?.mouthPosition ?? '',
         actionable: c.actionable ?? '', rx: c.headline ?? '',
       };

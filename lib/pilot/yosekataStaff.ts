@@ -4,7 +4,7 @@
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import type { PilotMetrics } from './targetCard';
 import type { StaffReferenceRow } from './survey';
-import { buildYosekata, summarizeYosekata, YOSEKATA_VERSION, type YoseResult, type YoseSummaryRow } from './yosekata';
+import { buildYosekata, summarizeYosekata, SMARTPHONE_YOSE_CORRECTION, YOSEKATA_VERSION, type YoseResult, type YoseSummaryRow } from './yosekata';
 
 export interface YoseSubjectRecord {
   id: string;
@@ -31,11 +31,13 @@ export interface YoseBundle {
 
 const KIND_ORDER = ['self_happy', 'others_say', 'dislike'];
 
+/** パイロットの記録はスマホ撮影なので、黄金比と比べるときは目間距離に −0.014 の補正を入れる */
 export function buildYoseBundle(code: string, self: PilotMetrics, refs: StaffReferenceRow[]): YoseBundle {
+  const opts = { selfCorrection: SMARTPHONE_YOSE_CORRECTION };
   const measured = refs.filter(r => r.metrics).sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind));
   const results = [
-    { result: buildYosekata(code, self, { name: '黄金比', kind: 'ideal', metrics: null }), referenceId: null },
-    ...measured.map(r => ({ result: buildYosekata(code, self, { name: r.person_name, kind: r.kind, metrics: r.metrics as unknown as PilotMetrics }), referenceId: r.id })),
+    { result: buildYosekata(code, self, { name: '黄金比', kind: 'ideal', metrics: null }, opts), referenceId: null },
+    ...measured.map(r => ({ result: buildYosekata(code, self, { name: r.person_name, kind: r.kind, metrics: r.metrics as unknown as PilotMetrics }, opts), referenceId: r.id })),
   ];
   const people = results.slice(1).map(x => x.result);
   return { results, summary: people.length ? summarizeYosekata(people) : [] };

@@ -8,7 +8,7 @@
 //   底辺 = 目間距離（顔幅比）、高さ = 目→口の距離（顔幅比）。どちらも額（生え際）の推定に依存しない。
 //   理想の高さ = 顔高の36%（2025ファイナリスト28名の平均と一致。「目0.50・口0.75」から出る0.40は実在しないので使わない）
 
-import type { PilotMetrics, MetricId } from './targetCard';
+import { SMARTPHONE_CORRECTIONS, SMARTPHONE_NOTE, type PilotMetrics, type MetricId } from './targetCard';
 import { TECHNIQUES, STRENGTH_LABEL, type Strength, type Technique } from './prescription';
 
 /** 寄せ方で見る指標（12指標のうち額に依存しないもの＋三角形） */
@@ -47,6 +47,9 @@ export const YOSE_METRICS: YoseMetricDef[] = [
 
 export interface YoseValues extends Record<YoseMetricId, number> {}
 
+/** スマホ撮影（パイロットの記録）で理想と比べるときの補正 */
+export const SMARTPHONE_YOSE_CORRECTION: Partial<Record<YoseMetricId, number>> = { eyeDist: SMARTPHONE_CORRECTIONS.eyeDist };
+
 /** 12指標から寄せ方用の7値を作る。triH と midlow は額に依存しない（H が約分で消える） */
 export function deriveYoseValues(m: PilotMetrics): YoseValues {
   return {
@@ -62,7 +65,7 @@ export function deriveYoseValues(m: PilotMetrics): YoseValues {
 
 /** 黄金比の目標値（triH は本人の顔高に対して36%） */
 export function idealYoseValues(self: PilotMetrics): YoseValues {
-  return { eyeDist: 0.46, triH: 0.36 * self.faceRatio, eyeWidth: 0.25, eyeAngle: 7.5, pupilPos: 0.5, philtrum: 1 / 3, midlow: 1 };
+  return { eyeDist: 0.46, triH: 0.36 * self.faceRatio, eyeWidth: 0.20, eyeAngle: 7.5, pupilPos: 0.5, philtrum: 1 / 3, midlow: 1 };
 }
 
 export type YoseRelation =
@@ -99,12 +102,13 @@ export interface YoseResult {
   triangle: { self: Tri; target: Tri; ideal: Tri };
   text: string;
   /** 計算の設定（校正で変わるので保存しておく） */
-  config: { tolerances: Record<YoseMetricId, number>; strengthRule: string; version: string };
+  config: { tolerances: Record<YoseMetricId, number>; strengthRule: string; version: string; selfCorrection?: Partial<Record<YoseMetricId, number>> };
 }
 
 export interface Tri { base: number; height: number; shape: number }
 
-export const YOSEKATA_VERSION = 'yosekata-2026-10-12';
+// 2026-10-13：目幅の理想 0.25→0.20、スマホ補正（目間距離 −0.014）を理想との比較に追加
+export const YOSEKATA_VERSION = 'yosekata-2026-10-13';
 
 /** 強さの規則（仮）：差が許容幅の2倍まで弱、3倍まで標準、それ以上は強。打ち合わせで直す前提 */
 export function strengthFromRatio(ratio: number): Strength {
@@ -117,6 +121,8 @@ export interface YoseOptions {
   /** 技法を絞る（ブランド別：id の集合。未指定なら処方表の全技法） */
   techniqueIds?: Set<string>;
   tolerances?: Partial<Record<YoseMetricId, number>>;
+  /** 本人の値を理想と比べるときだけ足す補正（スマホ撮影の目間距離 −0.014 など）。参照人物との差には入れない */
+  selfCorrection?: Partial<Record<YoseMetricId, number>>;
 }
 
 export function buildYosekata(
@@ -125,8 +131,14 @@ export function buildYosekata(
   target: { name: string; kind: YoseResult['targetKind']; metrics: PilotMetrics | null },
   opts: YoseOptions = {},
 ): YoseResult {
-  const s = deriveYoseValues(self);
+  const raw = deriveYoseValues(self);
+  const corr = opts.selfCorrection ?? {};
+  // 理想と比べる本人の値（補正つき）。三角の底辺＝目間距離なので triH は補正しない
+  const sIdeal = { ...raw } as YoseValues;
+  for (const k of Object.keys(corr) as YoseMetricId[]) sIdeal[k] = raw[k] + (corr[k] ?? 0);
   const ideal = idealYoseValues(self);
+  const isIdeal = !target.metrics;
+  const s = isIdeal ? sIdeal : raw;
   const t = target.metrics ? deriveYoseValues(target.metrics) : ideal;
   const defs = YOSE_METRICS.filter(d => !opts.metrics || opts.metrics.includes(d.id));
   const tolerances = {} as Record<YoseMetricId, number>;
@@ -135,7 +147,7 @@ export function buildYosekata(
     const tol = opts.tolerances?.[def.id] ?? def.tolerance;
     tolerances[def.id] = tol;
     const gap = t[def.id] - s[def.id];
-    const gi = ideal[def.id] - s[def.id];
+    const gi = ideal[def.id] - sIdeal[def.id];
     const same = Math.abs(gap) <= tol;
     let relation: YoseRelation;
     if (same) relation = 'same';
@@ -155,8 +167,9 @@ export function buildYosekata(
   const result: YoseResult = {
     subjectCode, targetName: target.name, targetKind: target.kind, rows,
     triangle: { self: tri(s), target: tri(t), ideal: tri(ideal) },
+    // 黄金比が目標のときの本人の値は補正つき
     text: '',
-    config: { tolerances, strengthRule: '≤2倍=弱, ≤3倍=標準, >3倍=強（仮）', version: YOSEKATA_VERSION },
+    config: { tolerances, strengthRule: '≤2倍=弱, ≤3倍=標準, >3倍=強（仮）', version: YOSEKATA_VERSION, ...(Object.keys(corr).length ? { selfCorrection: corr } : {}) },
   };
   result.text = yosekataToText(result);
   return result;
@@ -192,6 +205,7 @@ export function yosekataToText(r: YoseResult): string {
   }
   if (keep.length) L.push('追わないところ（本人の方が黄金比に近い）：' + keep.map(x => x.label).join('、'));
   if (!agree.length && !conflict.length) L.push('近づける項目はない。配置はすでに揃っている。');
+  if (r.config.selfCorrection?.eyeDist) L.push(`※目間距離は${SMARTPHONE_NOTE}を入れて黄金比と比べている`);
   return L.join('\n');
 }
 

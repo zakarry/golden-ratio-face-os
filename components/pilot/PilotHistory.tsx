@@ -98,7 +98,7 @@ function CaptureCard({ h, urls, showPhotos }: { h: PilotHistoryItem; urls: Recor
       {h.framing && !h.framing.ok && <p className="text-amber-700 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> 写りに注意（{h.framing.warnings.join('・')}）</p>}
       {k && (
         <div className="space-y-0.5 text-stone-600">
-          {yoseStrengths(h.metrics).length > 0 && <p><span className="text-stone-400">強み（黄金比の範囲内）：</span>{yoseStrengths(h.metrics).join('、')}</p>}
+          {yoseStrengths(h.metrics, { smartphone: true }).length > 0 && <p><span className="text-stone-400">強み（黄金比の範囲内）：</span>{yoseStrengths(h.metrics, { smartphone: true }).join('、')}</p>}
           {k.goldenRatio && <p className="tabular-nums"><span className="text-stone-400">黄金比参考値：</span>縦横 {k.goldenRatio.faceRatio.toFixed(3)}・目 {k.goldenRatio.eyePosition.toFixed(3)}・口 {k.goldenRatio.mouthPosition.toFixed(3)}</p>}
         </div>
       )}

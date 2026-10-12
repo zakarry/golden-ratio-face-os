@@ -12,13 +12,16 @@ import { Download, RefreshCw } from 'lucide-react';
 import type { ParticipantSummary } from '@/lib/pilot/staff';
 import { fetchCaptures, jstDate, type CaptureRow } from '@/lib/pilot/staffExport';
 import { fetchAllSurveysForStaff, REFERENCE_KIND_LABEL, type ReferenceKind, type StaffReferenceRow } from '@/lib/pilot/survey';
-import { METRIC_DEFS, formatMetric, type MetricDef, type PilotMetrics } from '@/lib/pilot/targetCard';
+import { METRIC_DEFS, formatMetric, correctedValue, SMARTPHONE_CORRECTIONS, SMARTPHONE_NOTE, type MetricDef, type MetricId, type PilotMetrics } from '@/lib/pilot/targetCard';
 import { STRENGTH_LABEL } from '@/lib/pilot/prescription';
-import { buildYosekata, deriveYoseValues, type YoseRow } from '@/lib/pilot/yosekata';
+import { buildYosekata, deriveYoseValues, SMARTPHONE_YOSE_CORRECTION, type YoseRow } from '@/lib/pilot/yosekata';
 import { pickYoseSubject } from '@/lib/pilot/yosekataStaff';
 
 /** テスト参加者（灰色で区別、または除外） */
 const TEST_CODES = new Set(['F38', 'F39', 'F40', 'F41']);
+/** 額（生え際）が推定の指標。数えと束ね表には入れず、参考として図だけ出す */
+const FOREHEAD_REF = new Set<MetricId>(['eyeY', 'noseY', 'lipY']);
+const MEDIAN = '#2563eb';
 const KIND_COLOR: Record<ReferenceKind, string> = { self_happy: '#2563eb', others_say: '#059669', dislike: '#e11d48' };
 const INK = '#1c1917', GRAY = '#a8a29e', IDEAL = '#dc2626', FONT = "'Hiragino Sans','Noto Sans JP','Yu Gothic',sans-serif";
 
@@ -56,7 +59,8 @@ export default function StaffAnalysis({ list }: { list: ParticipantSummary[] }) 
       if (!s?.metrics) continue;
       const m = s.metrics as unknown as PilotMetrics;
       const v = deriveYoseValues(m);
-      out.push({ p, test, takenAt: s.taken_at!, metrics: m, base: v.eyeDist, height: v.triH });
+      // 底辺（目間距離）は黄金比と比べるのでスマホ補正つき
+      out.push({ p, test, takenAt: s.taken_at!, metrics: m, base: correctedValue('eyeDist', v.eyeDist, SMARTPHONE_CORRECTIONS), height: v.triH });
     }
     return out.sort((a, b) => a.p.subjectCode.localeCompare(b.p.subjectCode));
   }, [captures, list, testMode]);
@@ -124,7 +128,7 @@ function TriangleScatter({ subjects, refs }: { subjects: Subject[]; refs: StaffR
   const ticks = (a: number, b: number) => { const n = 6, st = (b - a) / n; return Array.from({ length: n + 1 }, (_, i) => a + st * i); };
 
   return (
-    <Panel title="1. 逆三角形の散布図" sub="横＝底辺（目間距離）、縦＝高さ（目→口）。どちらも顔幅比。赤＝黄金比（0.46, 0.36×縦横比の平均）" onSave={() => saveSvgPng(svgRef.current, '分析_逆三角形.png')}>
+    <Panel title="1. 逆三角形の散布図" sub={`横＝底辺（目間距離）、縦＝高さ（目→口）。どちらも顔幅比。赤＝黄金比（0.46, 0.36×縦横比の平均）。参加者の底辺は${SMARTPHONE_NOTE}つき（似ている人の写真は補正なし）`} onSave={() => saveSvgPng(svgRef.current, '分析_逆三角形.png')}>
       <div className="overflow-x-auto">
         <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} width={W} height={H} style={{ fontFamily: FONT, background: '#ffffff' }}>
           <text x={L} y={22} fontSize={14} fontWeight={700} fill={INK}>逆三角形（底辺 × 高さ、顔幅比）　n={subjects.filter(s => !s.test).length}</text>
@@ -178,23 +182,27 @@ function TriangleScatter({ subjects, refs }: { subjects: Subject[]; refs: StaffR
 
 function Histograms({ subjects }: { subjects: Subject[] }) {
   const refs = useRef<Record<string, SVGSVGElement | null>>({});
+  const main = METRIC_DEFS.filter(d => !FOREHEAD_REF.has(d.id));
+  const ref = METRIC_DEFS.filter(d => FOREHEAD_REF.has(d.id));
+  const cell = (d: MetricDef) => (
+    <div key={d.id} className="space-y-1">
+      <Hist def={d} subjects={subjects} reference={FOREHEAD_REF.has(d.id)} svgRef={el => { refs.current[d.id] = el; }} />
+      <button type="button" onClick={() => saveSvgPng(refs.current[d.id] ?? null, `分析_分布_${d.label.replace(/（.*?）/g, '')}.png`)} className="text-[10px] text-stone-500 underline">この図を保存</button>
+    </div>
+  );
   const saveAll = async () => { for (const d of METRIC_DEFS) await saveSvgPng(refs.current[d.id] ?? null, `分析_分布_${d.label.replace(/（.*?）/g, '')}.png`); };
   return (
-    <Panel title="2. 12指標の分布" sub="灰色の帯＝黄金比の許容幅、赤線＝黄金比。帯の外の人数が多い指標が、全体の傾向です" onSave={saveAll} saveLabel="12枚とも保存">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {METRIC_DEFS.map(d => (
-          <div key={d.id} className="space-y-1">
-            <Hist def={d} subjects={subjects} svgRef={el => { refs.current[d.id] = el; }} />
-            <button type="button" onClick={() => saveSvgPng(refs.current[d.id] ?? null, `分析_分布_${d.label.replace(/（.*?）/g, '')}.png`)} className="text-[10px] text-stone-500 underline">この図を保存</button>
-          </div>
-        ))}
-      </div>
+    <Panel title="2. 12指標の分布" sub={`灰色の帯＝黄金比の許容幅、赤線＝黄金比、青の点線＝参加者全体の中央値。目間距離は${SMARTPHONE_NOTE}つき。額が推定の3指標（目の高さ・鼻底・口の位置）は数えず参考表示`} onSave={saveAll} saveLabel="12枚とも保存">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{main.map(cell)}</div>
+      <p className="text-xs font-semibold text-stone-500 pt-2">参考（額の位置が推定なので、数えない）</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 opacity-80">{ref.map(cell)}</div>
     </Panel>
   );
 }
 
-function Hist({ def, subjects, svgRef }: { def: MetricDef; subjects: Subject[]; svgRef: (el: SVGSVGElement | null) => void }) {
-  const vals = subjects.map(s => ({ v: s.metrics[def.id], test: s.test })).filter(x => typeof x.v === 'number' && isFinite(x.v));
+function Hist({ def, subjects, reference, svgRef }: { def: MetricDef; subjects: Subject[]; reference: boolean; svgRef: (el: SVGSVGElement | null) => void }) {
+  // 黄金比と比べるので、目間距離はスマホ補正つきの値を並べる
+  const vals = subjects.map(s => ({ v: correctedValue(def.id, s.metrics[def.id], SMARTPHONE_CORRECTIONS), test: s.test })).filter(x => typeof x.v === 'number' && isFinite(x.v));
   const lo0 = Math.min(...vals.map(x => x.v), def.ideal - def.tolerance * 2);
   const hi0 = Math.max(...vals.map(x => x.v), def.ideal + def.tolerance * 2);
   const N = 12, step = (hi0 - lo0) / N || 1;
@@ -205,6 +213,8 @@ function Hist({ def, subjects, svgRef }: { def: MetricDef; subjects: Subject[]; 
   const below = real.filter(x => x.v < def.ideal - def.tolerance).length;
   const above = real.filter(x => x.v > def.ideal + def.tolerance).length;
   const inside = real.length - below - above;
+  const sorted = real.map(x => x.v).sort((a, b) => a - b);
+  const median = sorted.length ? (sorted.length % 2 ? sorted[(sorted.length - 1) / 2] : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2) : null;
 
   const W = 300, H = 170, L = 26, R = 10, T = 34, B = 34;
   const X = (v: number) => L + (v - lo0) / (hi0 - lo0) * (W - L - R);
@@ -212,8 +222,10 @@ function Hist({ def, subjects, svgRef }: { def: MetricDef; subjects: Subject[]; 
   const bw = (W - L - R) / N;
   return (
     <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} width="100%" style={{ fontFamily: FONT, background: '#ffffff', maxWidth: W }} className="rounded-lg border border-stone-100">
-      <text x={8} y={15} fontSize={11} fontWeight={700} fill={INK}>{def.label}</text>
-      <text x={8} y={28} fontSize={9} fill={GRAY}>{`低い側 ${below}人 / 範囲内 ${inside}人 / 高い側 ${above}人（${def.dirLow}↔${def.dirHigh}）`}</text>
+      <text x={8} y={15} fontSize={11} fontWeight={700} fill={INK}>{def.label}{reference ? '（参考・額は推定）' : ''}{def.id === 'eyeDist' ? '（スマホ補正 −0.014）' : ''}</text>
+      <text x={8} y={28} fontSize={9} fill={GRAY}>{reference
+        ? `中央値 ${median != null ? formatMetric(median, def.unit) : '—'}（額が推定のため数えない）`
+        : `低い側 ${below}人 / 範囲内 ${inside}人 / 高い側 ${above}人　中央値 ${median != null ? formatMetric(median, def.unit) : '—'}`}</text>
       <rect x={X(def.ideal - def.tolerance)} y={T} width={X(def.ideal + def.tolerance) - X(def.ideal - def.tolerance)} height={H - T - B} fill="#e7e5e4" opacity={0.7} />
       {bins.map((b, i) => (
         <g key={i}>
@@ -222,6 +234,7 @@ function Hist({ def, subjects, svgRef }: { def: MetricDef; subjects: Subject[]; 
         </g>
       ))}
       <line x1={X(def.ideal)} x2={X(def.ideal)} y1={T - 2} y2={H - B} stroke={IDEAL} strokeWidth={1.5} />
+      {median != null && <line x1={X(median)} x2={X(median)} y1={T - 2} y2={H - B} stroke={MEDIAN} strokeWidth={1.5} strokeDasharray="4 3" />}
       <line x1={L} x2={W - R} y1={H - B} y2={H - B} stroke="#d6d3d1" />
       {[lo0, def.ideal, hi0].map((t, i) => <text key={i} x={X(t)} y={H - B + 13} fontSize={9} textAnchor={i === 0 ? 'start' : i === 2 ? 'end' : 'middle'} fill={i === 1 ? IDEAL : GRAY}>{formatMetric(t, def.unit)}</text>)}
       <text x={L - 4} y={T + 6} fontSize={8} textAnchor="end" fill={GRAY}>{maxC}</text>
@@ -236,7 +249,7 @@ interface BundleRow { s: Subject; agree: YoseRow[]; total: number }
 
 function BundleTable({ subjects }: { subjects: Subject[] }) {
   const rows = useMemo<BundleRow[]>(() => subjects.map(s => {
-    const r = buildYosekata(s.p.subjectCode, s.metrics, { name: '黄金比', kind: 'ideal', metrics: null });
+    const r = buildYosekata(s.p.subjectCode, s.metrics, { name: '黄金比', kind: 'ideal', metrics: null }, { selfCorrection: SMARTPHONE_YOSE_CORRECTION });
     const agree = r.rows.filter(x => x.relation === 'agree').sort((a, b) => b.ratio - a.ratio);
     return { s, agree, total: agree.reduce((a, x) => a + x.ratio, 0) };
   }).sort((a, b) => Number(a.s.test) - Number(b.s.test) || b.agree.length - a.agree.length || b.total - a.total), [subjects]);
@@ -244,7 +257,7 @@ function BundleTable({ subjects }: { subjects: Subject[] }) {
   const tone = (x: YoseRow) => x.strength === 'strong' ? 'bg-rose-50 border-rose-200 text-rose-800' : x.strength === 'standard' ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-stone-50 border-stone-200 text-stone-700';
 
   return (
-    <Panel title="3. 束ね表（黄金比へ近づけるところ）" sub="近づける項目が多い順（同数なら差の大きい順）。強＝赤、標準＝黄、弱＝灰" onSave={() => saveTablePng(rows.map(r => ({ code: r.s.p.subjectCode, name: r.s.p.name, date: jstDate(r.s.takenAt), test: r.s.test, items: r.agree.map(item) })))}>
+    <Panel title="3. 束ね表（黄金比へ近づけるところ）" sub={`近づける項目が多い順（同数なら差の大きい順）。強＝赤、標準＝黄、弱＝灰。額が推定の指標は入れていない。目間距離は${SMARTPHONE_NOTE}つき`} onSave={() => saveTablePng(rows.map(r => ({ code: r.s.p.subjectCode, name: r.s.p.name, date: jstDate(r.s.takenAt), test: r.s.test, items: r.agree.map(item) })))}>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead><tr className="text-stone-400 text-[10px] text-left"><th className="py-1 px-2">順</th><th className="px-2">コード</th><th className="px-2">名前</th><th className="px-2">撮影日</th><th className="px-2 text-right">数</th><th className="px-2">近づけるところ（方向・強さ）</th></tr></thead>

@@ -107,7 +107,7 @@ export default function StaffCaptures({ list, onOpenPerson }: { list: Participan
                     <td className="px-2 py-2"><span className={`px-2 py-0.5 rounded-full text-[10px] font-medium text-white ${r.phase === 'before' ? 'bg-stone-800' : 'bg-amber-500'}`}>{r.phase === 'before' ? 'メイク前' : 'メイク後'}</span></td>
                     <td className="px-2 py-2 text-center">{r.framing?.ok === false ? <span className="text-amber-700">×</span> : '○'}</td>
                     <td className="px-2 py-2 whitespace-normal min-w-[10rem] text-amber-800">{(r.framing?.warnings ?? []).join('・')}</td>
-                    <td className="px-2 py-2 whitespace-normal min-w-[12rem]">{yoseStrengths(r.metrics).join('、')}</td>
+                    <td className="px-2 py-2 whitespace-normal min-w-[12rem]">{yoseStrengths(r.metrics, { smartphone: true }).join('、')}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{r.gr?.faceRatio ?? ''}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{r.gr?.eyePosition ?? ''}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{r.gr?.mouthPosition ?? ''}</td>

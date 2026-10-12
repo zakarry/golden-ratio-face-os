@@ -14,7 +14,7 @@ import { analyzeFaceFromGuide } from '@/lib/analyzeFaceMock';
 import { buildKarteRecord, saveFaceKarteRecord } from '@/lib/karteStorage';
 import { releaseCanvas, renderBlueprintJpeg } from '@/lib/pilot/blueprintImage';
 import { detectFaceLandmarks, type DetectedGuide } from '@/lib/faceLandmarks';
-import { computePilotMetrics, buildTargetCard, formatMetric, type TargetCard, type PilotMetrics } from '@/lib/pilot/targetCard';
+import { computePilotMetrics, buildTargetCard, formatMetric, SMARTPHONE_CORRECTIONS, SMARTPHONE_NOTE, type TargetCard, type PilotMetrics } from '@/lib/pilot/targetCard';
 import { buildPrescription, prescriptionToText, STRENGTH_LABEL, type Prescription, type Strength } from '@/lib/pilot/prescription';
 import {
   checkFraming, fetchOwnMediaUrls, forgetPilotToken, getPilotRecords, lookupParticipant, newPilotId, readPilotToken, recordConsent, resyncPending,
@@ -160,7 +160,7 @@ function Session({ token, info, onReload, onSwitch, onOpenSurvey, surveySent }: 
   const [strength, setStrength] = useState<Strength>('standard');
 
   const metrics: PilotMetrics | null = useMemo(() => (guide && imgSize) ? computePilotMetrics(guide, imgSize.w, imgSize.h) : null, [guide, imgSize]);
-  const card: TargetCard | null = useMemo(() => (metrics && guide && imgSize) ? buildTargetCard(metrics, guide, imgSize.w, imgSize.h, { irisDiameterPx: guide.irisDiameterPx ?? null }) : null, [metrics, guide, imgSize]);
+  const card: TargetCard | null = useMemo(() => (metrics && guide && imgSize) ? buildTargetCard(metrics, guide, imgSize.w, imgSize.h, { irisDiameterPx: guide.irisDiameterPx ?? null, corrections: SMARTPHONE_CORRECTIONS }) : null, [metrics, guide, imgSize]);
   const rx: Prescription | null = useMemo(() => card ? buildPrescription(card, strength) : null, [card, strength]);
   // 顔カルテ（「あなたの顔の設計図」と同じ解析）
   const analysis = useMemo(() => guide ? analyzeFaceFromGuide(guide) : null, [guide]);
@@ -216,7 +216,9 @@ function Session({ token, info, onReload, onSwitch, onOpenSurvey, surveySent }: 
     const rec: PilotRecord = {
       id: newPilotId(info.subjectCode, phase), token, subjectCode: info.subjectCode, phase, takenAt: new Date().toISOString(), event: info.event,
       consent: true, isMinor: info.consentBy === 'guardian', // 同意の中身はサーバーの参加者記録を使う
-      imageDataUrl: dataUrl, imageWidth: imgSize.w, imageHeight: imgSize.h, guide, metrics, targetCard: card, prescription: rx, framing,
+      imageDataUrl: dataUrl, imageWidth: imgSize.w, imageHeight: imgSize.h, guide, metrics, targetCard: card, prescription: rx,
+      // 理想との比較に入れたスマホ補正を残す
+      framing: { ...framing, eyeDistCorrection: SMARTPHONE_CORRECTIONS.eyeDist },
       blueprintDataUrl: blueprint ?? undefined, dimensionDataUrl: dimension ?? undefined, karte,
       // 設計図が作れなかったことを記録に残す（運営ページで作り直せる）
       note: [blueprint ? '' : 'blueprint_failed', dimension ? '' : 'dimension_failed'].filter(Boolean).join(',') || undefined,
@@ -382,7 +384,7 @@ function Session({ token, info, onReload, onSwitch, onOpenSurvey, surveySent }: 
               {phase === 'before' && (
                 <div className="space-y-3">
                   <p className="text-xs font-semibold text-stone-500">① あなたの強み　<span className="font-normal text-stone-400">黄金比の範囲内に入っているところ</span></p>
-                  <StrengthList items={yoseStrengths(metrics)} />
+                  <StrengthList items={yoseStrengths(metrics, { smartphone: true })} />
                   <p className="text-xs font-semibold text-stone-500">② 黄金比参考値</p>
                   <GoldenRatioPanel gr={analysis.goldenRatio} />
                 </div>
@@ -414,6 +416,7 @@ function Session({ token, info, onReload, onSwitch, onOpenSurvey, surveySent }: 
                     </tr>
                   ))}</tbody>
                 </table>
+                <p className="mt-1 text-[10px] text-stone-400">目間距離は{SMARTPHONE_NOTE}を入れて目標と比べています（「現在」は測ったままの値）。</p>
               </details>
               <button type="button" onClick={copyRx} className={ghostBtn}><Copy className="w-3.5 h-3.5" /> 処方をコピー</button>
             </Card>
