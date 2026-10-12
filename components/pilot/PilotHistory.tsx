@@ -8,6 +8,7 @@ import { AlertTriangle, ChevronDown, ImageOff } from 'lucide-react';
 import { METRIC_DEFS, formatMetric, type MetricId } from '@/lib/pilot/targetCard';
 import type { Prescription } from '@/lib/pilot/prescription';
 import type { PilotHistoryItem } from '@/lib/pilot/pilotStorage';
+import { yoseStrengths } from '@/lib/pilot/yoseStrengths';
 
 /** 推移を見せる指標（額の推定に頼らないものを中心に） */
 const TREND_METRICS: MetricId[] = ['eyeDist', 'eyeWidth', 'eyeAngle', 'faceRatio', 'zone3', 'philtrum'];
@@ -97,8 +98,7 @@ function CaptureCard({ h, urls, showPhotos }: { h: PilotHistoryItem; urls: Recor
       {h.framing && !h.framing.ok && <p className="text-amber-700 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> 写りに注意（{h.framing.warnings.join('・')}）</p>}
       {k && (
         <div className="space-y-0.5 text-stone-600">
-          {k.triangleAnalysis && <p><span className="text-stone-400">顔印象タイプ：</span>{k.triangleAnalysis.label}</p>}
-          {k.strengths && k.strengths.length > 0 && <p><span className="text-stone-400">強み：</span>{k.strengths.join('、')}</p>}
+          {yoseStrengths(h.metrics).length > 0 && <p><span className="text-stone-400">強み（黄金比の範囲内）：</span>{yoseStrengths(h.metrics).join('、')}</p>}
           {k.goldenRatio && <p className="tabular-nums"><span className="text-stone-400">黄金比参考値：</span>縦横 {k.goldenRatio.faceRatio.toFixed(3)}・目 {k.goldenRatio.eyePosition.toFixed(3)}・口 {k.goldenRatio.mouthPosition.toFixed(3)}</p>}
         </div>
       )}
@@ -137,18 +137,20 @@ function Pic({ url, alt, label }: { url?: string; alt: string; label: string }) 
 
 /** 同じ日のメイク前→後で、黄金比に近づいた／離れた指標 */
 function MakeupEffect({ before, after }: { before: PilotHistoryItem; after: PilotHistoryItem }) {
-  const rows = TREND_METRICS.map(id => {
-    const def = METRIC_DEFS.find(d => d.id === id)!;
-    const b = deviation(before, id), a = deviation(after, id);
+  // 前後の差が許容幅（targetCard の tolerance）以下の指標は撮り方のぶれとみなして出さない
+  const rows = METRIC_DEFS.map(def => {
+    const b = deviation(before, def.id), a = deviation(after, def.id);
     if (b == null || a == null) return null;
+    const tol = before.targetCard?.items?.find(i => i.id === def.id)?.tolerance ?? def.tolerance;
+    if (Math.abs(a - b) <= tol) return null;
     const change = Math.abs(b) - Math.abs(a); // 正 = 黄金比に近づいた
-    return { id, label: def.label.replace(/（.*?）/g, ''), change, rel: change / def.tolerance, unit: def.unit };
-  }).filter((r): r is NonNullable<typeof r> => !!r && Math.abs(r.rel) >= 0.3);
+    return { id: def.id, label: def.label.replace(/（.*?）/g, ''), change, unit: def.unit };
+  }).filter((r): r is NonNullable<typeof r> => !!r);
   return (
     <div className="rounded-xl bg-amber-50/60 border border-amber-100 p-3 text-xs space-y-1">
       <p className="font-semibold text-amber-900">この日のメイク前 → メイク後</p>
       {rows.length === 0
-        ? <p className="text-stone-600">数値の上ではほとんど変わっていません。</p>
+        ? <p className="text-stone-600">変化なし（撮り方の範囲内）</p>
         : rows.map(r => <p key={r.id} className={r.change > 0 ? 'text-emerald-700' : 'text-rose-700'}>{r.label}：黄金比に{r.change > 0 ? '近づいた' : '離れた'}（{r.unit === '°' ? `${Math.abs(r.change).toFixed(1)}°` : Math.abs(r.change).toFixed(3)}）</p>)}
     </div>
   );

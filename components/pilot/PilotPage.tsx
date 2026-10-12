@@ -8,8 +8,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Camera, CheckCircle2, AlertTriangle, RefreshCw, Copy, Save, ClipboardList, Database, Lock, ImageIcon, Download } from 'lucide-react';
 import BlueprintCanvas from '@/components/BlueprintCanvas';
-import StrengthsPanel from '@/components/StrengthsPanel';
-import TriangleTypeCard from '@/components/TriangleTypeCard';
+import { yoseStrengths } from '@/lib/pilot/yoseStrengths';
 import GoldenRatioPanel from '@/components/GoldenRatioPanel';
 import { analyzeFaceFromGuide } from '@/lib/analyzeFaceMock';
 import { buildKarteRecord, saveFaceKarteRecord } from '@/lib/karteStorage';
@@ -382,11 +381,9 @@ function Session({ token, info, onReload, onSwitch, onOpenSurvey, surveySent }: 
               <p className="text-[11px] text-stone-400 leading-relaxed">評価ではなく、顔の構造を知るためのカルテです。黄金比は美しさの点数ではなく、構造を理解するための参考値です。</p>
               {phase === 'before' && (
                 <div className="space-y-3">
-                  <p className="text-xs font-semibold text-stone-500">① あなたの強み</p>
-                  <StrengthsPanel strengths={analysis.strengths} />
-                  <p className="text-xs font-semibold text-stone-500">② 顔印象タイプ</p>
-                  <TriangleTypeCard ta={analysis.triangleAnalysis} />
-                  <p className="text-xs font-semibold text-stone-500">③ 黄金比参考値</p>
+                  <p className="text-xs font-semibold text-stone-500">① あなたの強み　<span className="font-normal text-stone-400">黄金比の範囲内に入っているところ</span></p>
+                  <StrengthList items={yoseStrengths(metrics)} />
+                  <p className="text-xs font-semibold text-stone-500">② 黄金比参考値</p>
                   <GoldenRatioPanel gr={analysis.goldenRatio} />
                 </div>
               )}
@@ -532,3 +529,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const inputCls = 'rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-800 bg-white';
 const primaryBtn = 'inline-flex items-center gap-2 rounded-lg bg-stone-800 text-white text-sm font-medium px-4 py-2.5 disabled:opacity-40';
 const ghostBtn = 'inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white text-stone-700 text-xs px-3 py-1.5';
+
+/** 強み：寄せ方（黄金比）で範囲内になった指標の一覧 */
+function StrengthList({ items }: { items: string[] }) {
+  if (items.length === 0) return <p className="text-xs text-stone-500">黄金比の範囲内に入っている項目はありません。</p>;
+  return (
+    <ul className="flex flex-wrap gap-1.5">
+      {items.map(s => <li key={s} className="rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs px-3 py-1">{s}</li>)}
+    </ul>
+  );
+}

@@ -4,6 +4,7 @@
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import { METRIC_DEFS, type PilotMetrics } from './targetCard';
 import { buildYoseBundle, pickYoseSubject } from './yosekataStaff';
+import { yoseStrengths } from './yoseStrengths';
 import { staffMediaUrls, type ParticipantSummary } from './staff';
 import { fetchAllSurveysForStaff, flattenAnswers, REFERENCE_KIND_LABEL } from './survey';
 
@@ -118,8 +119,7 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
     { header: '写りの注意', key: 'warn', width: 28 },
     { header: '設計図', key: 'bp', width: 7 },
     { header: '寸法図', key: 'dim', width: 7 },
-    { header: '顔印象タイプ', key: 'tri', width: 18 },
-    { header: '強み', key: 'strengths', width: 36 },
+    { header: '強み（黄金比の範囲内）', key: 'strengths', width: 36 },
     { header: '黄金比 縦横', key: 'grFace', width: 11 },
     { header: '黄金比 目位置', key: 'grEye', width: 12 },
     { header: '黄金比 口位置', key: 'grMouth', width: 12 },
@@ -154,7 +154,7 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
         code: codeOf.get(c.participant_token) ?? '', name: nameOf.get(c.participant_token) ?? '', no: sessionNo.get(c.participant_token)?.get(jstDate(c.taken_at)),
         date: jstDate(c.taken_at), time: jstTime(c.taken_at), phase: c.phase === 'before' ? 'メイク前' : 'メイク後',
         ok: c.framing?.ok === false ? '×' : '○', warn: (c.framing?.warnings ?? []).join('・'), bp: c.blueprint_path ? 'あり' : '', dim: c.dimension_path ? 'あり' : '',
-        tri: c.tri ?? '', strengths: (c.strengths ?? []).join('、'),
+        strengths: yoseStrengths(c.metrics).join('、'),
         grFace: c.gr?.faceRatio ?? '', grEye: c.gr?.eyePosition ?? '', grMouth: c.gr?.mouthPosition ?? '',
         actionable: c.actionable ?? '', rx: c.headline ?? '',
       };

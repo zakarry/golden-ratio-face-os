@@ -8,6 +8,7 @@ import { ChevronLeft, ChevronRight, ImageOff, RefreshCw, X } from 'lucide-react'
 import { METRIC_DEFS } from '@/lib/pilot/targetCard';
 import { fetchCaptures, jstDate, jstTime, type CaptureRow } from '@/lib/pilot/staffExport';
 import { staffMediaUrls, type ParticipantSummary } from '@/lib/pilot/staff';
+import { yoseStrengths } from '@/lib/pilot/yoseStrengths';
 
 const PAGE = 30;
 type PhaseFilter = 'all' | 'before' | 'after';
@@ -85,7 +86,7 @@ export default function StaffCaptures({ list, onOpenPerson }: { list: Participan
           <table className="text-xs whitespace-nowrap">
             <thead className="bg-[#F3E9D8] text-stone-700">
               <tr className="text-left">
-                {['コード', '名前', '写真', '顔の設計図', '寸法図', '回', '撮影日', '時刻', '段階', '写り', '写りの注意', '顔印象タイプ', '強み', '黄金比 縦横', '目位置', '口位置', '修正対象'].map(h => <th key={h} className="px-2 py-2 font-semibold">{h}</th>)}
+                {['コード', '名前', '写真', '顔の設計図', '寸法図', '回', '撮影日', '時刻', '段階', '写り', '写りの注意', '強み（黄金比の範囲内）', '黄金比 縦横', '目位置', '口位置', '修正対象'].map(h => <th key={h} className="px-2 py-2 font-semibold">{h}</th>)}
                 {METRIC_DEFS.map(d => <th key={d.id} className="px-2 py-2 font-semibold" title={`黄金比 ${d.unit === '°' ? d.ideal + '°' : d.ideal.toFixed(3)}`}>{d.label.replace(/（.*?）/g, '')}<br /><span className="font-normal text-stone-500">黄金比 {d.unit === '°' ? d.ideal + '°' : d.ideal.toFixed(3)}</span></th>)}
                 <th className="px-2 py-2 font-semibold">処方</th>
               </tr>
@@ -106,8 +107,7 @@ export default function StaffCaptures({ list, onOpenPerson }: { list: Participan
                     <td className="px-2 py-2"><span className={`px-2 py-0.5 rounded-full text-[10px] font-medium text-white ${r.phase === 'before' ? 'bg-stone-800' : 'bg-amber-500'}`}>{r.phase === 'before' ? 'メイク前' : 'メイク後'}</span></td>
                     <td className="px-2 py-2 text-center">{r.framing?.ok === false ? <span className="text-amber-700">×</span> : '○'}</td>
                     <td className="px-2 py-2 whitespace-normal min-w-[10rem] text-amber-800">{(r.framing?.warnings ?? []).join('・')}</td>
-                    <td className="px-2 py-2">{r.tri ?? ''}</td>
-                    <td className="px-2 py-2 whitespace-normal min-w-[12rem]">{(r.strengths ?? []).join('、')}</td>
+                    <td className="px-2 py-2 whitespace-normal min-w-[12rem]">{yoseStrengths(r.metrics).join('、')}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{r.gr?.faceRatio ?? ''}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{r.gr?.eyePosition ?? ''}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{r.gr?.mouthPosition ?? ''}</td>
