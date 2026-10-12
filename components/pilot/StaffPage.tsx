@@ -132,7 +132,7 @@ function Dashboard() {
                 <td>{p.isMinor ? '未成年' : ''}</td>
                 <td>{p.consentedAt ? (p.consentBy === 'guardian' ? '保護者' : '本人') : <span className="text-amber-700">未</span>}</td>
                 <td>{p.surveyAt ? <span className="text-emerald-700">済</span> : <span className="text-stone-300">未</span>}</td>
-                <td>{p.needsRetakePitch && <span className="rounded-full border border-amber-300 bg-amber-50 text-amber-800 px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap">要撮り直し（傾き）</span>}</td>
+                <td>{p.retake && <span title={p.retake.reason} className="rounded-full border border-amber-300 bg-amber-50 text-amber-800 px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap">{p.retake.label}</span>}</td>
                 <td className="text-right tabular-nums">{p.sessions}</td>
                 <td className="text-right tabular-nums">{p.count}（{p.beforeCount}/{p.afterCount}）</td>
                 <td className="text-right">{fmt(p.lastAt)}</td>

@@ -19,7 +19,7 @@ const fmtDate = (iso: string) => new Date(iso).toLocaleString('ja-JP', { year: '
 const COLOR = { self: '#1c1917', target: '#2563eb', ideal: '#dc2626' };
 
 export default function StaffYosekata({ code, token, history }: { code: string; token: string; history: PilotHistoryItem[] }) {
-  const { subject, needsRetakePitch } = useMemo(() => yoseSubjectFromRecords(history), [history]);
+  const { subject, retake } = useMemo(() => yoseSubjectFromRecords(history), [history]);
   const [refs, setRefs] = useState<StaffReferenceRow[] | null>(null);
   const [saved, setSaved] = useState<SavedYoseRow[] | null>(null);
   const [sel, setSel] = useState(0);
@@ -61,9 +61,9 @@ export default function StaffYosekata({ code, token, history }: { code: string; 
       </div>
       {msg && <p className="text-xs text-stone-600">{msg}</p>}
       {error && <p className="text-xs text-rose-700">{error}</p>}
-      {!subject && (needsRetakePitch
-        ? <p className="text-xs font-semibold text-amber-700">要撮り直し（傾き）：写り○のメイク前はありますが、顔の上下の傾きが 8〜20° に入っている写真がありません。</p>
-        : <p className="text-xs text-stone-500">写り○の「メイク前」の撮影がまだないので、寄せ方は出せません。</p>)}
+      {!subject && (retake
+        ? <p className="text-xs font-semibold text-amber-700">{retake.label}：{retake.reason}。写り○で傾き 8〜20° のメイク前が1枚入ると、寄せ方が出ます。</p>
+        : <p className="text-xs text-stone-500">まだ撮影がないので、寄せ方は出せません。</p>)}
       {subject && !refs && !error && <p className="text-xs text-stone-400">読み込んでいます…</p>}
 
       {subject && bundle && (

@@ -90,7 +90,7 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
     { header: 'メイク前', key: 'before', width: 9 },
     { header: 'メイク後', key: 'after', width: 9 },
     { header: '最終撮影日', key: 'last', width: 12 },
-    { header: '撮り直し', key: 'retake', width: 18 },
+    { header: '撮り直し', key: 'retake', width: 40 },
     { header: '専用リンク', key: 'url', width: 70 },
   ];
   list.forEach(p => s1.addRow({
@@ -99,7 +99,7 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
     consentAt: p.consentedAt ? jstDate(p.consentedAt) : '',
     sessions: p.sessions, count: p.count, before: p.beforeCount, after: p.afterCount,
     last: p.lastAt ? jstDate(p.lastAt) : '',
-    retake: p.needsRetakePitch ? '要撮り直し（傾き）' : '',
+    retake: p.retake ? `${p.retake.label}：${p.retake.reason}` : '',
     url: `${origin}/?p=${p.token}&openExternalBrowser=1`,
   }));
   header(s1);
@@ -245,9 +245,9 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
     { header: '文章', key: 'text', width: 110 },
   ];
   for (const p of list) {
-    const { subject, needsRetakePitch } = yoseSubjectFromRecords(captures.filter(c => c.participant_token === p.token).map(c => ({ ...c, id: '' })));
+    const { subject, retake } = yoseSubjectFromRecords(captures.filter(c => c.participant_token === p.token).map(c => ({ ...c, id: '' })));
     if (!subject) {
-      if (needsRetakePitch) s6.addRow({ code: p.subjectCode, name: p.name, at: '', target: '', kind: '', text: '要撮り直し（傾き）：写り○のメイク前に、傾き 8〜20° の写真がない' });
+      if (retake) s6.addRow({ code: p.subjectCode, name: p.name, at: '', target: '', kind: '', text: `${retake.label}：${retake.reason}` });
       continue;
     }
     const bundle = buildYoseBundle(p.subjectCode, subject.metrics, refs.filter(r => r.token === p.token));

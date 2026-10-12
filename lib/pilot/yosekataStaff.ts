@@ -3,7 +3,7 @@
 
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import { METRIC_DEFS, type PilotMetrics } from './targetCard';
-import { pitchInRange } from './pilotStorage';
+import { pitchInRange, retakeStatus, type RetakeStatus } from './pilotStorage';
 import type { StaffReferenceRow } from './survey';
 import { buildYosekata, summarizeYosekata, SMARTPHONE_YOSE_CORRECTION, YOSEKATA_VERSION, type YoseResult, type YoseSummaryRow } from './yosekata';
 
@@ -13,7 +13,7 @@ export interface YoseSubjectRecord {
   taken_at?: string;
   takenAt?: string;
   metrics: PilotMetrics | Record<string, number> | null;
-  framing: { ok?: boolean; pitch?: number } | null;
+  framing: { ok?: boolean; pitch?: number; warnings?: string[] } | null;
 }
 
 
@@ -31,12 +31,12 @@ const when = (r: YoseSubjectRecord) => r.taken_at ?? r.takenAt ?? '';
 
 /**
  * 寄せ方・束ね表で使う「本人の値」。写り○かつ傾き 8〜20° のメイク前の記録の中央値。
- * needsRetakePitch：写り○のメイク前はあるのに、傾きが基準内の記録が1枚もない（要撮り直し）
+ * retake：本人の値に使えるメイク前が1枚もないとき、その理由（写り×だけ／傾きが範囲外だけ／メイク前なし）
  */
-export function yoseSubjectFromRecords(records: YoseSubjectRecord[]): { subject: YoseSubject | null; needsRetakePitch: boolean } {
+export function yoseSubjectFromRecords(records: YoseSubjectRecord[]): { subject: YoseSubject | null; retake: RetakeStatus | null } {
   const okBefore = records.filter(r => r.phase === 'before' && r.framing?.ok === true && r.metrics);
   const use = okBefore.filter(r => pitchInRange(r.framing?.pitch)).sort((a, b) => when(a).localeCompare(when(b)));
-  if (!use.length) return { subject: null, needsRetakePitch: okBefore.length > 0 };
+  if (!use.length) return { subject: null, retake: retakeStatus(records) };
   const metrics = {} as PilotMetrics;
   for (const d of METRIC_DEFS) {
     const v = use.map(r => (r.metrics as Record<string, number>)[d.id]).filter(x => typeof x === 'number' && isFinite(x)).sort((a, b) => a - b);
@@ -44,7 +44,7 @@ export function yoseSubjectFromRecords(records: YoseSubjectRecord[]): { subject:
     metrics[d.id] = n ? (n % 2 ? v[(n - 1) / 2] : (v[n / 2 - 1] + v[n / 2]) / 2) : NaN;
   }
   const last = use[use.length - 1];
-  return { subject: { id: last.id, takenAt: when(last), count: use.length, metrics }, needsRetakePitch: false };
+  return { subject: { id: last.id, takenAt: when(last), count: use.length, metrics }, retake: null };
 }
 
 export interface YoseBundle {

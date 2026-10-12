@@ -18,7 +18,7 @@ import { METRIC_DEFS, computePilotMetrics, formatMetric, correctedValue, SMARTPH
 import { STRENGTH_LABEL } from '@/lib/pilot/prescription';
 import { buildYosekata, deriveYoseValues, groupAgreeRows, SMARTPHONE_YOSE_CORRECTION, type YoseAgreeItem } from '@/lib/pilot/yosekata';
 import { yoseSubjectFromRecords } from '@/lib/pilot/yosekataStaff';
-import { FRAMING_LIMITS } from '@/lib/pilot/pilotStorage';
+import { FRAMING_LIMITS, type RetakeStatus } from '@/lib/pilot/pilotStorage';
 
 /** テスト参加者（灰色で区別、または除外） */
 const TEST_CODES = new Set(['F38', 'F39', 'F40', 'F41']);
@@ -57,13 +57,13 @@ export default function StaffAnalysis({ list }: { list: ParticipantSummary[] }) 
   // 本人の値＝写り○かつ傾き 8〜20° のメイク前の記録の中央値。該当0枚の人は「要撮り直し（傾き）」
   const { subjects, retake } = useMemo(() => {
     const out: Subject[] = [];
-    const retake: { p: ParticipantSummary; test: boolean }[] = [];
+    const retake: { p: ParticipantSummary; test: boolean; status: RetakeStatus }[] = [];
     if (!captures) return { subjects: out, retake };
     for (const p of list) {
       const test = TEST_CODES.has(p.subjectCode.toUpperCase());
       if (test && testMode === 'exclude') continue;
-      const { subject: s, needsRetakePitch } = yoseSubjectFromRecords(captures.filter(c => c.participant_token === p.token).map(c => ({ ...c, id: '' })));
-      if (!s) { if (needsRetakePitch) retake.push({ p, test }); continue; }
+      const { subject: s, retake: rt } = yoseSubjectFromRecords(captures.filter(c => c.participant_token === p.token).map(c => ({ ...c, id: '' })));
+      if (!s) { if (rt) retake.push({ p, test, status: rt }); continue; }
       const v = deriveYoseValues(s.metrics);
       // 底辺（目間距離）は黄金比と比べるのでスマホ補正つき
       out.push({ p, test, takenAt: s.takenAt, count: s.count, metrics: s.metrics, base: correctedValue('eyeDist', v.eyeDist, SMARTPHONE_CORRECTIONS), height: v.triH });
@@ -72,11 +72,14 @@ export default function StaffAnalysis({ list }: { list: ParticipantSummary[] }) 
   }, [captures, list, testMode]);
 
   const realCount = subjects.filter(s => !s.test).length;
+  // まだ1枚も撮っていない人（本人の値が出せない、もう一つの理由）
+  const notStarted = list.filter(p => p.count === 0 && !TEST_CODES.has(p.subjectCode.toUpperCase())).map(p => p.subjectCode);
 
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-3 flex-wrap text-xs">
-        <p className="text-stone-600">対象 {realCount}名{subjects.length > realCount && `（＋テスト ${subjects.length - realCount}名）`}　<span className="text-stone-400">写り○・傾き8〜20°のメイク前の中央値</span>{retake.filter(r => !r.test).length > 0 && <span className="text-amber-700 font-semibold">要撮り直し（傾き） {retake.filter(r => !r.test).length}名</span>}</p>
+        <p className="text-stone-600">対象 {realCount}名{subjects.length > realCount && `（＋テスト ${subjects.length - realCount}名）`}　<span className="text-stone-400">写り○・傾き8〜20°のメイク前の中央値</span>{retake.filter(r => !r.test).length > 0 && <span className="text-amber-700 font-semibold">要撮り直し {retake.filter(r => !r.test).length}名</span>}
+        {notStarted.length > 0 && <span className="text-stone-500">未撮影 {notStarted.length}名（{notStarted.join('、')}）</span>}</p>
         <div className="flex rounded-lg border border-stone-300 overflow-hidden divide-x divide-stone-300">
           {([['gray', 'テストは灰色'], ['exclude', 'テストを除外']] as const).map(([v, l]) => (
             <button key={v} type="button" onClick={() => setTestMode(v)} className={`px-3 py-1.5 ${testMode === v ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>{l}</button>
@@ -261,7 +264,7 @@ function Hist({ def, subjects, reference, svgRef }: { def: MetricDef; subjects: 
 
 interface BundleRow { s: Subject; agree: YoseAgreeItem[]; total: number }
 
-function BundleTable({ subjects, retake }: { subjects: Subject[]; retake: { p: ParticipantSummary; test: boolean }[] }) {
+function BundleTable({ subjects, retake }: { subjects: Subject[]; retake: { p: ParticipantSummary; test: boolean; status: RetakeStatus }[] }) {
   const rows = useMemo<BundleRow[]>(() => subjects.map(s => {
     const r = buildYosekata(s.p.subjectCode, s.metrics, { name: '黄金比', kind: 'ideal', metrics: null }, { selfCorrection: SMARTPHONE_YOSE_CORRECTION });
     // 下顔面（中顔面÷下顔面・人中比・目→口の高さ）は1件として数える
@@ -274,7 +277,7 @@ function BundleTable({ subjects, retake }: { subjects: Subject[]; retake: { p: P
   const tone = (x: YoseAgreeItem) => x.strength === 'strong' ? 'bg-rose-50 border-rose-200 text-rose-800' : x.strength === 'standard' ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-stone-50 border-stone-200 text-stone-700';
 
   return (
-    <Panel title="3. 束ね表（黄金比へ近づけるところ）" sub={`近づける項目が多い順（同数なら差の大きい順）。強＝赤、標準＝黄、弱＝灰。下顔面（中顔面÷下顔面・人中比・目→口の高さ）は1件として数える。額が推定の指標は入れていない。目間距離は${SMARTPHONE_NOTE}つき`} onSave={() => saveTablePng([...rows.map(r => ({ code: r.s.p.subjectCode, name: r.s.p.name, date: `${jstDate(r.s.takenAt)}（${r.s.count}枚）`, test: r.s.test, items: r.agree.map(item) })), ...retake.map(x => ({ code: x.p.subjectCode, name: x.p.name, date: '', test: x.test, items: ['要撮り直し（傾き）'] }))])}>
+    <Panel title="3. 束ね表（黄金比へ近づけるところ）" sub={`近づける項目が多い順（同数なら差の大きい順）。強＝赤、標準＝黄、弱＝灰。下顔面（中顔面÷下顔面・人中比・目→口の高さ）は1件として数える。額が推定の指標は入れていない。目間距離は${SMARTPHONE_NOTE}つき`} onSave={() => saveTablePng([...rows.map(r => ({ code: r.s.p.subjectCode, name: r.s.p.name, date: `${jstDate(r.s.takenAt)}（${r.s.count}枚）`, test: r.s.test, items: r.agree.map(item) })), ...retake.map(x => ({ code: x.p.subjectCode, name: x.p.name, date: '', test: x.test, items: [`${x.status.label}：${x.status.reason}`] }))])}>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead><tr className="text-stone-400 text-[10px] text-left"><th className="py-1 px-2">順</th><th className="px-2">コード</th><th className="px-2">名前</th><th className="px-2">撮影日（中央値の枚数）</th><th className="px-2 text-right">数</th><th className="px-2">近づけるところ（方向・強さ）</th></tr></thead>
@@ -296,7 +299,7 @@ function BundleTable({ subjects, retake }: { subjects: Subject[]; retake: { p: P
               <td className="py-1.5 px-2">—</td>
               <td className="px-2 font-semibold">{x.p.subjectCode}{x.test && <span className="ml-1 text-[9px]">テスト</span>}</td>
               <td className="px-2 whitespace-nowrap">{x.p.name}</td>
-              <td className="px-2" colSpan={3}><span className="rounded-full border border-amber-300 bg-amber-50 text-amber-800 px-2 py-0.5 font-semibold">要撮り直し（傾き）</span><span className="ml-2 text-stone-500">写り○のメイク前に、傾き 8〜20° の写真がない</span></td>
+              <td className="px-2" colSpan={3}><span className="rounded-full border border-amber-300 bg-amber-50 text-amber-800 px-2 py-0.5 font-semibold">{x.status.label}</span><span className="ml-2 text-stone-500">{x.status.reason}</span></td>
             </tr>
           ))}</tbody>
         </table>

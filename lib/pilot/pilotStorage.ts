@@ -299,14 +299,49 @@ export function pitchInRange(p: number | undefined | null) {
   return p != null && p >= FRAMING_LIMITS.pitchMin && p <= FRAMING_LIMITS.pitchMax;
 }
 
+export type RetakeKind = 'framing' | 'pitch' | 'noBefore';
+export interface RetakeStatus {
+  kind: RetakeKind;
+  /** 運営ページの印 */
+  label: string;
+  /** 参加者ページに出す理由（「撮り直しをお願いします：〜。」の〜） */
+  reason: string;
+}
+
+type RetakeRecord = { phase: string; taken_at?: string; takenAt?: string; framing: { ok?: boolean; pitch?: number; warnings?: string[] } | null };
+
+/** 写り×になった理由（保存された注意の文から） */
+function framingReason(warnings: string[] | undefined): string {
+  const w = (warnings ?? []).join(' ');
+  if (/向いて/.test(w)) return '顔の向き（正面）がずれていました';
+  if (/見下ろす|見上げる/.test(w)) return '顔の上下の角度（スマホの高さ）がずれていました';
+  if (/傾いて/.test(w)) return '顔が左右に傾いていました';
+  if (/小さすぎ/.test(w)) return '顔が小さく写っていました（もう少し近づいてください）';
+  if (/大きすぎ/.test(w)) return '顔が大きく写っていました（少し離れてください）';
+  if (/視線|まばたき/.test(w)) return '視線がレンズからそれていました';
+  return '写りの条件を満たしていませんでした';
+}
+
 /**
- * 撮り直しのお願い（運営ページの「要撮り直し」と同じ条件）。理由の文、無ければ null。
- * 写り○のメイク前はあるのに、傾き 8〜20° の写真が1枚もないとき。条件を満たす写真が入れば自然に消える
+ * 要撮り直し：寄せ方・束ね表に使う「本人の値」（写り○かつ傾き 8〜20° のメイク前）が1枚もない人。
+ * 撮影がまだ1枚もない人は「未撮影」なので null。条件を満たす写真が入れば自然に null に戻る。
  */
-export function retakeReason(records: { phase: string; framing: { ok?: boolean; pitch?: number } | null }[]): string | null {
-  const okBefore = records.filter(r => r.phase === 'before' && r.framing?.ok === true);
-  if (okBefore.length > 0 && !okBefore.some(r => pitchInRange(r.framing?.pitch))) return '顔の上下の角度（スマホの高さ）がずれていました';
+export function retakeStatus(records: RetakeRecord[]): RetakeStatus | null {
+  if (records.length === 0) return null;
+  const before = records.filter(r => r.phase === 'before');
+  if (before.length === 0) return { kind: 'noBefore', label: '要撮影（メイク前）', reason: 'メイク前（素顔）の写真がまだありません' };
+  const okBefore = before.filter(r => r.framing?.ok === true);
+  if (okBefore.length === 0) {
+    const latest = [...before].sort((a, b) => (a.taken_at ?? a.takenAt ?? '').localeCompare(b.taken_at ?? b.takenAt ?? '')).pop();
+    return { kind: 'framing', label: '要撮り直し（写り）', reason: framingReason(latest?.framing?.warnings) };
+  }
+  if (!okBefore.some(r => pitchInRange(r.framing?.pitch))) return { kind: 'pitch', label: '要撮り直し（傾き）', reason: '顔の上下の角度（スマホの高さ）がずれていました' };
   return null;
+}
+
+/** 参加者ページ用：撮り直しの理由（無ければ null） */
+export function retakeReason(records: RetakeRecord[]): string | null {
+  return retakeStatus(records)?.reason ?? null;
 }
 
 export type FramingIssue = 'yaw' | 'roll' | 'small' | 'large' | 'gaze' | 'eyeOpen' | 'pitchHigh' | 'pitchLow';
