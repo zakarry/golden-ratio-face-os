@@ -187,7 +187,7 @@ function FaceIdentitySaved({
           <IdentityPanelHeader />
 
           <SectionLabel label="① あなたの強み" sub="構造的な設計資源" />
-          <YoseStrengthList guide={baseline.guide} />
+          <YoseStrengthList guide={baseline.guide} imageSrc={baseline.imageSrc} />
 
           <SectionLabel label="② 黄金比参考値" sub="構造参考" />
           <GoldenRatioPanel gr={analysis.goldenRatio} />
@@ -491,7 +491,7 @@ function FaceIdentityUpdate({
               <IdentityPanelHeader />
 
               <SectionLabel label="① あなたの強み" sub="構造的な設計資源" />
-              <YoseStrengthList guide={guide} />
+              <YoseStrengthList guide={guide} imageSrc={imageSrc} />
 
               <SectionLabel label="② 黄金比参考値" sub="構造参考" />
               <GoldenRatioPanel gr={analysisResult!.goldenRatio} />
@@ -623,7 +623,7 @@ function FaceIdentityCreate({
             <IdentityPanelHeader />
 
             <SectionLabel label="① あなたの強み" sub="構造的な設計資源" />
-            <YoseStrengthList guide={guide} />
+            <YoseStrengthList guide={guide} imageSrc={imageSrc} />
 
             <SectionLabel label="② 黄金比参考値" sub="構造参考" />
             <GoldenRatioPanel gr={analysisResult!.goldenRatio} />

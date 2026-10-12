@@ -224,7 +224,7 @@ function DailyConditionTab({ onNavigate }: { onNavigate?: (nav: string) => void 
                 <span className="text-[11px] font-semibold text-stone-500 tracking-wide">今日の強み</span>
                 <span className="text-[10px] text-stone-300">現在の構造</span>
               </div>
-              <YoseStrengthList guide={guide} />
+              <YoseStrengthList guide={guide} imageSrc={imageSrc} />
 
               <div className="pt-2">
                 <SaveKarteButton label="今日のカルテを保存" onSave={handleSave} saved={saved} />

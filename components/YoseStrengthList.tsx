@@ -2,7 +2,7 @@
 
 // 「あなたの強み」：寄せ方（黄金比が目標）で範囲内（許容幅の中）に入った指標の一覧。固定文は使わない。
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import type { DetectedGuide } from '@/lib/faceLandmarks';
 import { computePilotMetrics } from '@/lib/pilot/targetCard';
@@ -11,11 +11,30 @@ import { yoseStrengths } from '@/lib/pilot/yoseStrengths';
 /** 設計図から強みを出す。画像サイズの無い古い設計図では null */
 export function strengthsFromGuide(guide: DetectedGuide | null | undefined): string[] | null {
   if (!guide?.imageWidth || !guide.imageHeight) return null;
-  return yoseStrengths(computePilotMetrics(guide, guide.imageWidth, guide.imageHeight));
+  const list = yoseStrengths(computePilotMetrics(guide, guide.imageWidth, guide.imageHeight));
+  // 目尻・目頭の高さが無い古い設計図では目の角度が黄金比の値（7.5°）で埋まるので、強みに数えない
+  return guide.leftEyeOuterY == null ? list.filter(s => s !== '目の角度') : list;
 }
 
-export default function YoseStrengthList({ guide, items }: { guide?: DetectedGuide | null; items?: string[] | null }) {
-  const list = items ?? strengthsFromGuide(guide);
+/**
+ * imageSrc：設計図に画像サイズが入っていない古い保存でも、保存してある写真（元画像そのまま）の縦横から計算する
+ */
+export default function YoseStrengthList({ guide, items, imageSrc }: { guide?: DetectedGuide | null; items?: string[] | null; imageSrc?: string | null }) {
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  const needSize = !items && !!guide && !(guide.imageWidth && guide.imageHeight) && !!imageSrc;
+  useEffect(() => {
+    if (!needSize || !imageSrc) return;
+    let alive = true;
+    const img = new Image();
+    img.onload = () => { if (alive && img.naturalWidth) setSize({ w: img.naturalWidth, h: img.naturalHeight }); };
+    img.src = imageSrc;
+    return () => { alive = false; };
+  }, [needSize, imageSrc]);
+
+  const list = items
+    ?? strengthsFromGuide(guide)
+    ?? (guide && size ? strengthsFromGuide({ ...guide, imageWidth: size.w, imageHeight: size.h }) : null);
+  if (needSize && !size && !list) return <p className="text-xs text-stone-400 px-1">強みを計算しています…</p>;
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-emerald-100 overflow-hidden">
       <div className="px-6 pt-5 pb-4 border-b border-emerald-50 flex items-center justify-between">
