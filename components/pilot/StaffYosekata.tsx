@@ -104,7 +104,7 @@ function TargetView({ r }: { r: YoseResult }) {
           <GapMap rows={r.rows} />
         </div>
       </div>
-      <JudgeTable rows={r.rows} tn={tn} />
+      <JudgeTable rows={r.rows} tn={tn} showIdeal={r.targetKind !== 'ideal'} />
       <pre className="whitespace-pre-wrap text-xs text-stone-800 bg-stone-50 rounded-lg p-3 font-sans leading-relaxed">{r.text}</pre>
     </div>
   );
@@ -176,17 +176,18 @@ export function judgeLabel(x: YoseRow): string {
 
 const fv = (v: number, unit: '' | '°') => unit === '°' ? `${v.toFixed(1)}°` : v.toFixed(3);
 
-function JudgeTable({ rows, tn }: { rows: YoseRow[]; tn: string }) {
+// 目標が黄金比のときは「黄金比」の列が重なるので出さない
+function JudgeTable({ rows, tn, showIdeal }: { rows: YoseRow[]; tn: string; showIdeal: boolean }) {
   const tone = (x: YoseRow) => x.relation === 'same' ? 'text-emerald-700' : x.relation === 'conflict' ? 'text-amber-700' : x.relation === 'keep' ? 'text-stone-400' : 'text-blue-700';
   return (
     <table className="w-full text-xs">
-      <thead><tr className="text-stone-400 text-[10px]"><th className="text-left py-1 px-2">指標</th><th className="text-right px-2">本人</th><th className="text-right px-2">{tn}</th><th className="text-right px-2">黄金比</th><th className="text-right px-2">差</th><th className="text-left px-2">判定</th></tr></thead>
+      <thead><tr className="text-stone-400 text-[10px]"><th className="text-left py-1 px-2">指標</th><th className="text-right px-2">本人</th><th className="text-right px-2">{tn}</th>{showIdeal && <th className="text-right px-2">黄金比</th>}<th className="text-right px-2">差</th><th className="text-left px-2">判定</th></tr></thead>
       <tbody>{rows.map(x => (
         <tr key={x.id} className="border-t border-stone-100">
           <td className="py-1 px-2 text-stone-700">{x.label}</td>
           <td className="text-right px-2 tabular-nums">{fv(x.self, x.unit)}</td>
           <td className="text-right px-2 tabular-nums">{fv(x.target, x.unit)}</td>
-          <td className="text-right px-2 tabular-nums text-stone-400">{fv(x.ideal, x.unit)}</td>
+          {showIdeal && <td className="text-right px-2 tabular-nums text-stone-400">{fv(x.ideal, x.unit)}</td>}
           <td className="text-right px-2 tabular-nums">{(x.gap >= 0 ? '+' : '') + fv(x.gap, x.unit)}</td>
           <td className={`px-2 font-semibold ${tone(x)}`}>{judgeLabel(x)}</td>
         </tr>

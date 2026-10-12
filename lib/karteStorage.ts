@@ -48,7 +48,7 @@ async function mirrorToSupabase(record: FaceKarteRecord): Promise<void> {
 
     const { imageSrc: _imageSrc, guide, analysis, diagnosisSummary, strengths, goldenRatio,
       triangleAnalysis, makeupPlan, beforeAfter, faceYogaPlan, faceYogaSkipped,
-      purpose, scene, level, styleId, providerId, note, ...rest } = record;
+      purpose, scene, level, styleId, providerId, yosekata, note, ...rest } = record;
 
     const { error } = await supabase.from('face_karte_records').upsert({
       id: rest.id,
@@ -71,6 +71,7 @@ async function mirrorToSupabase(record: FaceKarteRecord): Promise<void> {
       level: level ?? null,
       style_id: styleId ?? null,
       provider_id: providerId ?? null,
+      yosekata: yosekata ?? null,
       note: note ?? null,
     });
 
@@ -125,7 +126,7 @@ export async function getRecordsFromSupabase(_userId: string): Promise<FaceKarte
 // ─── Record builder ───────────────────────────────────────────────────────────
 
 import type { AnalysisResult } from '@/types/analysis';
-import type { MakeupPlan, BeforeAfter, FaceYogaPlan, MakeupPurpose, FaceDesignerProviderId } from '@/types/karte';
+import type { MakeupPlan, BeforeAfter, FaceYogaPlan, MakeupPurpose, FaceDesignerProviderId, FaceKarteRecord as KarteRec } from '@/types/karte';
 import type { DetectedGuide } from '@/lib/faceLandmarks';
 import type { UserLevel } from '@/types/userLevel';
 import type { StyleId } from '@/lib/idealStyleChoices';
@@ -133,7 +134,7 @@ import type { StyleId } from '@/lib/idealStyleChoices';
 export function buildKarteRecord(
   type: KarteRecordType,
   analysis: AnalysisResult,
-  options: { makeupPlan?: MakeupPlan; beforeAfter?: BeforeAfter; note?: string; faceYogaPlan?: FaceYogaPlan; faceYogaSkipped?: boolean; purpose?: MakeupPurpose; scene?: string; imageSrc?: string; guide?: DetectedGuide; level?: UserLevel; styleId?: StyleId; providerId?: FaceDesignerProviderId } = {},
+  options: { makeupPlan?: MakeupPlan; beforeAfter?: BeforeAfter; note?: string; faceYogaPlan?: FaceYogaPlan; faceYogaSkipped?: boolean; purpose?: MakeupPurpose; scene?: string; imageSrc?: string; guide?: DetectedGuide; level?: UserLevel; styleId?: StyleId; providerId?: FaceDesignerProviderId; yosekata?: KarteRec['yosekata'] } = {},
 ): FaceKarteRecord {
   return {
     id: `karte_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -163,6 +164,7 @@ export function buildKarteRecord(
     level:       options.level,
     styleId:     options.styleId,
     providerId:  options.providerId,
+    yosekata:    options.yosekata,
     note:        options.note,
   };
 }

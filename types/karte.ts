@@ -2,6 +2,18 @@ import type { AnalysisResult } from './analysis';
 import type { DetectedGuide } from '@/lib/faceLandmarks';
 import type { UserLevel } from './userLevel';
 import type { StyleId } from '@/lib/idealStyleChoices';
+import type { YoseResult } from '@/lib/pilot/yosekata';
+
+/** 寄せ方（計算層）の結果。診断ごとにカルテへ残す（許容幅などは校正で変わるので config ごと） */
+export interface YosekataKarte {
+  targetName: string;
+  rows: YoseResult['rows'];
+  triangle: YoseResult['triangle'];
+  text: string;
+  config: YoseResult['config'];
+  /** ブランドの絞り込みで通したとき */
+  providerId?: FaceDesignerProviderId;
+}
 
 // ─── Record types ─────────────────────────────────────────────────────────────
 
@@ -121,6 +133,8 @@ export interface FaceKarteRecord {
   styleId?: StyleId;
   /** レビューを受けたFace Designer（Standard AI以外を選んだ場合のみ） */
   providerId?: FaceDesignerProviderId;
+  /** 寄せ方（黄金比＝全指標、brand＝ブランドの絞り込み）。参照人物の選択は今は黄金比のみ */
+  yosekata?: { ideal: YosekataKarte; brand?: YosekataKarte };
 
   // Metadata
   note?: string;
@@ -265,6 +279,8 @@ export const FACE_DESIGNER_ENDING_MESSAGE =
 
 export interface FaceDesignerComment {
   provider: FaceDesignerProvider;
-  sections: FaceDesignerReviewSection[];  // always exactly 3
+  sections: FaceDesignerReviewSection[];  // ①②③（ブランドの Face Rule があれば④）
   recommendations: FaceDesignerRecommendations;
+  /** ①②③を寄せ方の計算で出したときの結果（カルテ保存用） */
+  yosekata?: { ideal: YosekataKarte; brand?: YosekataKarte };
 }

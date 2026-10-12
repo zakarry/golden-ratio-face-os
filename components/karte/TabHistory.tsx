@@ -17,7 +17,8 @@ export default function TabHistory({ onNavigate }: { onNavigate?: (nav: string) 
   const [records, setRecords] = useState<FaceKarteRecord[]>([]);
   const [filter, setFilter]   = useState<KarteRecordType | 'all'>('all');
 
-  const reload = useCallback(() => setRecords(getFaceKarteRecords()), []);
+  // 日付の新しい順（保存順ではなく診断日で並べる）
+  const reload = useCallback(() => setRecords([...getFaceKarteRecords()].sort((a, b) => b.date.localeCompare(a.date))), []);
 
   useEffect(() => { reload(); }, [reload]);
 
@@ -179,6 +180,19 @@ function KarteCard({ record, onDelete }: { record: FaceKarteRecord; onDelete: (i
       {/* Expanded detail */}
       {open && (
         <div className="border-t border-stone-100 px-5 py-4 space-y-4">
+          {/* 寄せ方（診断ごとの計算結果） */}
+          {record.yosekata && (
+            <Section title="寄せ方（黄金比）">
+              <div className="space-y-2">
+                {[record.yosekata.ideal, record.yosekata.brand].filter(Boolean).map((y, i) => (
+                  <div key={i}>
+                    <pre className="whitespace-pre-wrap font-sans text-xs text-stone-600 leading-relaxed">{y!.text}</pre>
+                    <p className="text-[10px] text-stone-300">{y!.providerId ? `${y!.providerId} の絞り込み・` : ''}計算の版 {y!.config.version}</p>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          )}
           {/* Strengths */}
           {record.strengths.length > 0 && (
             <Section title="強み">

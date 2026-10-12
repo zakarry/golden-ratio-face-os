@@ -119,11 +119,11 @@ export default function TabDailyMakeup({ level = 'advanced', onNavigate }: { lev
         const summary = computeBeforeAfterSummary(beforeResult, result);
         setBeforeAfter({ beforeAnalysis: beforeResult, afterAnalysis: result, changeSummary: summary });
         setImpression(computeImpressionComparison(beforeResult, result, purpose));
-        setDesignerComment(generateFaceDesignerComment(beforeResult, result, purpose, providerId));
+        setDesignerComment(generateFaceDesignerComment(beforeResult, result, purpose, providerId, beforeGuide));
         setStep('compare');
       }
     } catch { setAfterDetState('error'); }
-  }, [afterSrc, beforeResult, purpose, providerId]);
+  }, [afterSrc, beforeResult, beforeGuide, purpose, providerId]);
 
   const handleReset = useCallback(() => {
     if (beforeSrc?.startsWith('blob:')) URL.revokeObjectURL(beforeSrc);
@@ -146,10 +146,11 @@ export default function TabDailyMakeup({ level = 'advanced', onNavigate }: { lev
       level,
       styleId: styleId ?? undefined,
       providerId: providerId !== 'standard_ai' ? providerId : undefined,
+      yosekata: designerComment?.yosekata,
     });
     saveFaceKarteRecord(record);
     setSaved(true);
-  }, [beforeResult, beforeAfter, faceYogaPlan, faceYogaSkipped, purpose, sceneId, level, styleId, providerId]);
+  }, [beforeResult, beforeAfter, faceYogaPlan, faceYogaSkipped, purpose, sceneId, level, styleId, providerId, designerComment]);
 
   return (
     <div className="space-y-6">
@@ -761,7 +762,7 @@ function FaceDesignerReviewCard({ comment }: { comment: FaceDesignerComment }) {
               <span className="text-sm font-semibold text-gold leading-none">{section.number}</span>
               <p className="text-xs font-semibold text-stone-700 tracking-wide">{section.title}</p>
             </div>
-            <p className="text-[13px] text-stone-600 leading-[1.85] tracking-wide pl-6">{section.body}</p>
+            <p className="text-[13px] text-stone-600 leading-[1.85] tracking-wide pl-6 whitespace-pre-line">{section.body}</p>
           </div>
         ))}
       </div>

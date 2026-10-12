@@ -2,8 +2,9 @@ import type { FaceDesignerProviderId } from '@/types/karte';
 
 // Face Rule：ブランドの暗黙知を判断ルール化したもの。
 // Concept Book「AIは解析、ブランドは解釈」の"解釈"を担う部分。
-// generateFaceDesignerComment の①②③（AIによる解析コメント）はそのままに、
+// generateFaceDesignerComment の①②③（AIによる解析コメント＝寄せ方の計算）はそのままに、
 // ここにルールがあるブランドだけ④としてブランドの解釈を追加する。
+// ④の判定と技法は同じ計算をブランドの絞り込み（BRAND_YOSE_PRESETS）で通したもので、reviewNote はその前に添えるだけ。
 export interface FaceRule {
   providerId: FaceDesignerProviderId;
   /** ブランドの判断ルール（暗黙知）。Face Rule Interviewから登録される想定 */

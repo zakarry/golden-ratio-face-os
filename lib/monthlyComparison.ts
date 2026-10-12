@@ -115,6 +115,8 @@ import type {
 } from '@/types/karte';
 import { FACE_DESIGNER_PROVIDERS, MAKEUP_PURPOSE_LABELS } from '@/types/karte';
 import { getFaceRule } from '@/lib/faceRules';
+import { buildDesignerYosekata } from '@/lib/yosekataDesigner';
+import type { DetectedGuide } from '@/lib/faceLandmarks';
 
 const PURPOSE_IMPRESSION_LABEL: Partial<Record<MakeupPurpose, string>> = {
   kirei:   '綺麗',
@@ -278,6 +280,8 @@ export function generateFaceDesignerComment(
   after: AnalysisResult,
   purpose: MakeupPurpose,
   providerId: FaceDesignerProviderId = 'standard_ai',
+  /** 素顔（Before）の設計図。あれば①②③を寄せ方の計算で出す */
+  beforeGuide: DetectedGuide | null = null,
 ): FaceDesignerComment {
   const provider = FACE_DESIGNER_PROVIDERS[providerId];
   const targetLabel = PURPOSE_IMPRESSION_LABEL[purpose] ?? 'ナチュラル';
@@ -318,19 +322,23 @@ export function generateFaceDesignerComment(
       ? `${sceneLabel}では、眉山を1〜2mm高めにすると、より洗練された印象になります。`
     : `${sceneLabel}では、頬骨上部へ少し光を加えると、さらに立体感が引き立つでしょう。`;
 
-  const sections: FaceDesignerReviewSection[] = [
+  // 素顔の設計図があれば、①②③は寄せ方の計算（黄金比が目標）で毎回組み立てる。無ければ従来の文
+  const yose = buildDesignerYosekata(beforeGuide, providerId);
+  const sections: FaceDesignerReviewSection[] = yose ? yose.sections : [
     { number: '①', title: '今回一番良かったポイント', body: bestPoint },
     { number: '②', title: 'なぜその印象になったのか', body: whyExplanation },
     { number: '③', title: '次回さらに良くするなら', body: suggestion },
   ];
 
-  // ── ④ ブランドのFace Rule（解釈）── AIの解析(①②③)とは別レイヤー
+  // ── ④ ブランドのFace Rule（解釈）── 判定と技法は同じ計算をブランドの絞り込みで通した結果。ブランドの文言は前に添えるだけ
   const faceRule = getFaceRule(providerId);
   if (faceRule) {
     sections.push({
       number: '④',
       title: `${provider.name}からの提案`,
-      body: faceRule.reviewNote,
+      body: yose?.brand ? `${faceRule.reviewNote}
+
+${yose.brand.text}` : faceRule.reviewNote,
     });
   }
 
@@ -341,6 +349,7 @@ export function generateFaceDesignerComment(
       products: [],
       techniques: faceRule?.recommendedTechniques.map((name) => ({ name })) ?? [],
     },
+    ...(yose ? { yosekata: { ideal: yose.ideal, ...(yose.brand ? { brand: yose.brand } : {}) } } : {}),
   };
 }
 
