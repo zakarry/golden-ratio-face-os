@@ -226,7 +226,7 @@ export async function getParticipantHistory(token: string): Promise<PilotHistory
   const supabase = getSupabaseClient();
   if (!supabase) return [];
   const { data, error } = await supabase.from('pilot_records')
-    .select('id, phase, taken_at, image_path, blueprint_path, metrics, target_card, prescription, karte, framing')
+    .select('id, phase, taken_at, image_path, blueprint_path, dimension_path, metrics, target_card, prescription, karte, framing')
     .eq('participant_token', token).order('taken_at');
   if (error) throw new Error(error.message);
   return (data ?? []).map(toHistoryItem);
