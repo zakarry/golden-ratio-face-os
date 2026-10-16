@@ -23,6 +23,8 @@ Deno.serve(async (req) => {
   const paths = Array.isArray(body.paths) ? body.paths.filter((p): p is string => typeof p === 'string') : [];
   if (!/^[0-9a-f]{16}$/.test(token) || paths.length === 0 || paths.length > 80) return json({ error: 'bad request' }, 400);
   if (paths.some(p => !p.startsWith(`${token}/`) || p.includes('..'))) return json({ error: 'forbidden' }, 403);
+  // 運営が入れた「運営が見る人」の写真（<token>/survey/staff_…）は本人には出さない
+  if (paths.some(p => p.includes('/survey/staff_'))) return json({ error: 'forbidden' }, 403);
 
   const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
   const { data: participant } = await admin.from('pilot_participants').select('token').eq('token', token).maybeSingle();
