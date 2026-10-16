@@ -522,6 +522,8 @@ function MyRefCompare({ refs, history }: { refs: ReferencePerson[]; history: Pil
               <div className="overflow-x-auto">
                 <CompareTable subject={self} ref_={cur.metrics as unknown as PilotMetrics} selfLabel="あなた" otherLabel={cur.person_name} />
               </div>
+              {/* 表の「あなた」は撮ったままの値。黄金比と見比べるときの読み違いを防ぐ */}
+              <p className="text-[11px] text-stone-500">目間距離は、スマホで撮ると実際より約0.014大きく出ます（黄金比と見比べるときの目安）。</p>
             </div>
           )}
           {refs.length > measured.length && <p className="text-[11px] text-stone-400">ほかに {refs.length - measured.length}人は、まだ測っていません。</p>}
