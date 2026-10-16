@@ -97,7 +97,7 @@ export interface YoseResult {
   subjectCode: string;
   targetName: string;
   /** 'ideal' = 黄金比のみ、それ以外は参照人物の kind */
-  targetKind: 'ideal' | 'self_happy' | 'others_say' | 'dislike';
+  targetKind: 'ideal' | 'self_happy' | 'others_say' | 'dislike' | 'staff_say';
   rows: YoseRow[];
   triangle: { self: Tri; target: Tri; ideal: Tri };
   text: string;
@@ -176,7 +176,7 @@ export function buildYosekata(
   return result;
 }
 
-const KIND_LABEL: Record<YoseResult['targetKind'], string> = { ideal: '黄金比', self_happy: '言われると嬉しい人', others_say: '周りが言う人', dislike: '言われて嫌だった人' };
+const KIND_LABEL: Record<YoseResult['targetKind'], string> = { ideal: '黄金比', self_happy: '言われると嬉しい人', others_say: '周りが言う人', dislike: '言われて嫌だった人', staff_say: '運営が見る人' };
 
 function fmt(v: number, unit: '' | '°') { return unit === '°' ? `${v.toFixed(1)}°` : v.toFixed(2); }
 function fmtGap(v: number, unit: '' | '°') { return unit === '°' ? `${v > 0 ? '+' : ''}${v.toFixed(1)}°` : `${v > 0 ? '+' : ''}${v.toFixed(3)}`; }

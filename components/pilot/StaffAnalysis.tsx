@@ -25,7 +25,7 @@ const TEST_CODES = new Set(['F38', 'F39', 'F40', 'F41']);
 /** 額（生え際）が推定の指標。数えと束ね表には入れず、参考として図だけ出す */
 const FOREHEAD_REF = new Set<MetricId>(['eyeY', 'noseY', 'lipY']);
 const MEDIAN = '#2563eb';
-const KIND_COLOR: Record<ReferenceKind, string> = { self_happy: '#2563eb', others_say: '#059669', dislike: '#e11d48' };
+const KIND_COLOR: Record<ReferenceKind, string> = { self_happy: '#2563eb', others_say: '#059669', dislike: '#e11d48', staff_say: '#7c3aed' };
 const INK = '#1c1917', GRAY = '#a8a29e', IDEAL = '#dc2626', FONT = "'Hiragino Sans','Noto Sans JP','Yu Gothic',sans-serif";
 
 interface Subject {
@@ -182,7 +182,7 @@ function TriangleScatter({ subjects, refs }: { subjects: Subject[]; refs: StaffR
             <circle cx={6} cy={0} r={5} fill={INK} /><text x={16} y={4} fontSize={10} fill={INK}>参加者</text>
             <circle cx={66} cy={0} r={5} fill={GRAY} /><text x={76} y={4} fontSize={10} fill={GRAY}>テスト</text>
             <circle cx={126} cy={0} r={6} fill={IDEAL} /><text x={136} y={4} fontSize={10} fill={IDEAL}>黄金比</text>
-            {(['self_happy', 'others_say', 'dislike'] as const).map((k, i) => (
+            {(['self_happy', 'others_say', 'dislike', 'staff_say'] as const).map((k, i) => (
               <g key={k} transform={`translate(${186 + i * 130}, 0)`}>
                 <rect x={1.5} y={-4.5} width={9} height={9} transform="rotate(45 6 0)" fill="#ffffff" stroke={KIND_COLOR[k]} strokeWidth={1.8} />
                 <text x={16} y={4} fontSize={10} fill={KIND_COLOR[k]}>{REFERENCE_KIND_LABEL[k]}</text>

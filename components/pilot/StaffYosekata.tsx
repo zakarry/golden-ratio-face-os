@@ -35,6 +35,11 @@ export default function StaffYosekata({ code, token, history }: { code: string; 
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
   }, [token, code]);
   useEffect(() => { load(); }, [load]);
+  // アンケート欄で似ている人を追加・測定したら、計算し直す
+  useEffect(() => {
+    window.addEventListener('pilot-refs-updated', load);
+    return () => window.removeEventListener('pilot-refs-updated', load);
+  }, [load]);
 
   const bundle = useMemo(() => subject && refs ? buildYoseBundle(code, subject.metrics, refs) : null, [code, subject, refs]);
   const current = bundle?.results[Math.min(sel, bundle.results.length - 1)]?.result ?? null;

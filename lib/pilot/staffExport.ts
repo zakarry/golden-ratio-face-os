@@ -186,13 +186,13 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
     { header: '名前', key: 'name', width: 16 },
     { header: '回答日', key: 'at', width: 12 },
     ...qCols.map((q, i) => ({ header: `${q.no}. ${q.title}`, key: `q${i}`, width: 30 })),
-    ...(['self_happy', 'others_say', 'dislike'] as const).map(k => ({ header: REFERENCE_KIND_LABEL[k], key: `ref_${k}`, width: 24 })),
+    ...(['self_happy', 'others_say', 'dislike', 'staff_say'] as const).map(k => ({ header: REFERENCE_KIND_LABEL[k], key: `ref_${k}`, width: 24 })),
   ];
   list.forEach(p => {
     const s = surveyOf.get(p.token);
     const row: Record<string, unknown> = { code: p.subjectCode, name: p.name, at: s ? jstDate(s.updated_at) : '未回答' };
     if (s) flattenAnswers(s.answers).forEach((a, i) => { row[`q${i}`] = a.answer; });
-    for (const k of ['self_happy', 'others_say', 'dislike'] as const) {
+    for (const k of ['self_happy', 'others_say', 'dislike', 'staff_say'] as const) {
       row[`ref_${k}`] = refs.filter(r => r.token === p.token && r.kind === k).map(r => r.person_name).join('、');
     }
     s3.addRow(row).alignment = { vertical: 'top', wrapText: true };

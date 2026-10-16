@@ -59,7 +59,7 @@ export default function SurveyPage({ token = '', onDone, official = false, onSki
   const setA = (id: string, v: string | string[]) => setAnswers(a => ({ ...a, [id]: v }));
 
   const refsByKind = useMemo(() => {
-    const m: Record<ReferenceKind, ReferencePerson[]> = { self_happy: [], others_say: [], dislike: [] };
+    const m: Record<ReferenceKind, ReferencePerson[]> = { self_happy: [], others_say: [], dislike: [], staff_say: [] }; // staff_say は本人側には来ない
     for (const r of refs) m[r.kind].push(r);
     return m;
   }, [refs]);

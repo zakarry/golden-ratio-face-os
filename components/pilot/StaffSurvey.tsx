@@ -2,17 +2,21 @@
 
 // 運営ページの参加者詳細：「アンケート」欄
 // 回答（質問→答え）と、挙がった「似ている人」を種類ごとに表示。参照写真を測って本人と並べ、保存できる。
+// 「運営が見る人」（staff_say）は運営だけが追加でき、本人側には出ない。
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { ClipboardList, Ruler, Save, ImageOff } from 'lucide-react';
-import { flattenAnswers, fetchSurveyForStaff, REFERENCE_KIND_LABEL, type ReferenceKind, type StaffReferenceRow, type StaffSurveyRow } from '@/lib/pilot/survey';
+import { ClipboardList, Ruler, Save, ImageOff, UserPlus } from 'lucide-react';
+import { addStaffReference, flattenAnswers, fetchSurveyForStaff, REFERENCE_KIND_LABEL, type ReferenceKind, type StaffReferenceRow, type StaffSurveyRow } from '@/lib/pilot/survey';
 import { compareMetrics, measureReferenceImage, saveReferenceMetrics, signedUrl, type ReferenceMeasurement } from '@/lib/pilot/referenceMeasure';
 import { formatMetric, type PilotMetrics } from '@/lib/pilot/targetCard';
 
-const KINDS: ReferenceKind[] = ['self_happy', 'others_say', 'dislike'];
+const KINDS: ReferenceKind[] = ['self_happy', 'others_say', 'dislike', 'staff_say'];
+
+/** 似ている人が増えた・測った：寄せ方の欄に知らせて計算し直してもらう */
+const notifyRefsUpdated = () => window.dispatchEvent(new Event('pilot-refs-updated'));
 const fmt = (iso: string | null) => iso ? new Date(iso).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : '';
 
-/** subjectMetrics：本人のいちばん新しい「メイク前」の測定値（比較に使う） */
+/** subjectMetrics：本人の値（写り○かつ傾き 8〜20° のメイク前の中央値。比較に使う） */
 export default function StaffSurvey({ token, subjectMetrics }: { token: string; subjectMetrics: PilotMetrics | null }) {
   const [survey, setSurvey] = useState<StaffSurveyRow | null>(null);
   const [refs, setRefs] = useState<StaffReferenceRow[] | null>(null);
@@ -52,7 +56,8 @@ export default function StaffSurvey({ token, subjectMetrics }: { token: string; 
           <div key={kind} className="space-y-2">
             <p className="text-xs font-semibold text-stone-600">{REFERENCE_KIND_LABEL[kind]}（{list.length}人）</p>
             {list.length === 0 && <p className="text-xs text-stone-300">なし</p>}
-            {list.map(r => <ReferenceRow key={r.id} r={r} subjectMetrics={subjectMetrics} onSaved={load} />)}
+            {list.map(r => <ReferenceRow key={r.id} r={r} subjectMetrics={subjectMetrics} onSaved={() => { load(); notifyRefsUpdated(); }} />)}
+            {kind === 'staff_say' && <AddStaffReference token={token} onAdded={() => { load(); notifyRefsUpdated(); }} />}
           </div>
         );
       })}
@@ -109,6 +114,7 @@ function ReferenceRow({ r, subjectMetrics, onSaved }: { r: StaffReferenceRow; su
         <div className="min-w-0 flex-1 space-y-1">
           <p className="text-sm font-semibold text-stone-800">{r.person_name}</p>
           {r.source_note && <p className="text-stone-500">メモ：{r.source_note}</p>}
+          {r.added_by && <p className="text-stone-400">登録：{r.added_by}</p>}
           <p className={r.measured_at ? 'text-emerald-700' : 'text-stone-500'}>{status}</p>
           <div className="flex flex-wrap gap-2 pt-1">
             {url && <button type="button" onClick={measure} disabled={busy} className={btn}><Ruler className="w-3.5 h-3.5" /> {busy && !result ? '測定中…' : '測定'}</button>}
@@ -130,6 +136,43 @@ function ReferenceRow({ r, subjectMetrics, onSaved }: { r: StaffReferenceRow; su
         </div>
       )}
       {!result && showSaved && stored && <CompareTable subject={subjectMetrics} ref_={stored} />}
+    </div>
+  );
+}
+
+/** 運営が見る人を追加（名前・真正面の写真・出典メモ）。写真は縦横比を変えずに縮小して保存 */
+function AddStaffReference({ token, onAdded }: { token: string; onAdded: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [note, setNote] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const add = async () => {
+    if (!name.trim()) { setMsg('名前を入れてください'); return; }
+    setBusy(true); setMsg('');
+    const err = await addStaffReference(token, name.trim(), file, note);
+    setBusy(false);
+    if (err) { setMsg(err); return; }
+    setName(''); setNote(''); setFile(null); setOpen(false);
+    onAdded();
+  };
+  if (!open) return <button type="button" onClick={() => setOpen(true)} className={btn}><UserPlus className="w-3.5 h-3.5" /> 運営が見る人を追加</button>;
+  return (
+    <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-3 text-xs space-y-2">
+      <p className="font-semibold text-stone-700">運営が見る人を追加（本人には表示されません）</p>
+      <input value={name} onChange={e => setName(e.target.value)} placeholder="名前（例：井上和）" className="rounded-lg border border-stone-200 px-2 py-1.5 w-64 bg-white" />
+      <div className="flex items-center gap-2">
+        <span className="text-stone-500">真正面の写真</span>
+        <input type="file" accept="image/*" onChange={e => setFile(e.target.files?.[0] ?? null)} />
+      </div>
+      <input value={note} onChange={e => setNote(e.target.value)} placeholder="写真の出典・年（例：2024年 雑誌）" className="rounded-lg border border-stone-200 px-2 py-1.5 w-64 bg-white" />
+      <div className="flex gap-2">
+        <button type="button" onClick={add} disabled={busy} className={saveBtn}><Save className="w-3.5 h-3.5" /> {busy ? '登録中…' : '登録'}</button>
+        <button type="button" onClick={() => { setOpen(false); setMsg(''); }} className={btn}>やめる</button>
+      </div>
+      {msg && <p className="text-rose-700">{msg}</p>}
+      <p className="text-stone-400">登録したら、下の「測定」→「保存」で寄せ方に出ます。</p>
     </div>
   );
 }

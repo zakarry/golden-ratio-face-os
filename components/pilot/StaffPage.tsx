@@ -15,6 +15,7 @@ import type { PilotHistoryItem } from '@/lib/pilot/pilotStorage';
 import PilotHistory from './PilotHistory';
 import StaffSurvey from './StaffSurvey';
 import StaffYosekata from './StaffYosekata';
+import { yoseSubjectFromRecords } from '@/lib/pilot/yosekataStaff';
 import StaffCaptures from './StaffCaptures';
 import StaffAnalysis from './StaffAnalysis';
 
@@ -245,7 +246,8 @@ function Detail({ p, onBack }: { p: ParticipantSummary; onBack: () => void }) {
       </div>
       <EditParticipant p={p} />
       {/* 事前アンケート（本人の最新の「メイク前」と参照写真を並べる） */}
-      <StaffSurvey token={p.token} subjectMetrics={history ? ([...history].reverse().find(h => h.phase === 'before')?.metrics ?? null) : null} />
+      {/* 比較に使う本人の値は寄せ方と同じ（写り○かつ傾き 8〜20° のメイク前の中央値） */}
+      <StaffSurvey token={p.token} subjectMetrics={history ? (yoseSubjectFromRecords(history).subject?.metrics ?? null) : null} />
       {/* 寄せ方（本人→黄金比・似ている人）。計算だけで出す */}
       {history && <StaffYosekata code={p.subjectCode} token={p.token} history={history} />}
       {error && <p className="text-xs text-rose-700">{error}</p>}

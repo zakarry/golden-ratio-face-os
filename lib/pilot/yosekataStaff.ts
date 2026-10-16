@@ -54,7 +54,7 @@ export interface YoseBundle {
   summary: YoseSummaryRow[];
 }
 
-const KIND_ORDER = ['self_happy', 'others_say', 'dislike'];
+const KIND_ORDER = ['self_happy', 'others_say', 'dislike', 'staff_say'];
 
 /** パイロットの記録はスマホ撮影なので、黄金比と比べるときは目間距離に −0.014 の補正を入れる */
 export function buildYoseBundle(code: string, self: PilotMetrics, refs: StaffReferenceRow[]): YoseBundle {

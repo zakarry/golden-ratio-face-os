@@ -20,12 +20,14 @@ export interface SurveyQuestion {
   refKind?: ReferenceKind;
 }
 
-export type ReferenceKind = 'self_happy' | 'others_say' | 'dislike';
+/** 本人がアンケートで挙げる3種類＋運営が見る人（staff_say。本人側には出さない） */
+export type ReferenceKind = 'self_happy' | 'others_say' | 'dislike' | 'staff_say';
 
 export const REFERENCE_KIND_LABEL: Record<ReferenceKind, string> = {
   self_happy: '言われると嬉しい人',
   others_say: '周りが言う人',
   dislike: '言われて嫌だった人',
+  staff_say: '運営が見る人',
 };
 
 /** 質問は id で保存されるので、文言を直しても id は変えないこと */
@@ -145,6 +147,8 @@ export interface StaffReferenceRow {
   framing: { yaw?: number; roll?: number; ok?: boolean; warnings?: string[] } | null;
   measured_at: string | null;
   measured_by: string | null;
+  /** 運営が見る人（staff_say）を登録した人のメール */
+  added_by?: string | null;
 }
 
 export interface StaffSurveyRow {
@@ -195,4 +199,29 @@ export function flattenAnswers(answers: SurveyAnswers): { no: number; title: str
     const answer = [base, other && `その他：${other}`].filter(Boolean).join('、');
     return { no: q.no, title: q.title, answer };
   });
+}
+
+/**
+ * 運営が見る人（staff_say）を登録する。写真は縦横比を変えずに縮小して <token>/survey/staff_ 配下に置く。
+ * 登録した人のメールはデータベース側で added_by に残る。戻り値はエラー文（成功なら null）
+ */
+export async function addStaffReference(token: string, personName: string, file: File | null, sourceNote: string): Promise<string | null> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return 'Supabase 未設定';
+  let path: string | null = null, w: number | null = null, h: number | null = null;
+  if (file) {
+    const s = await shrinkImage(file, 1600);
+    path = `${token}/survey/staff_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
+    const { error } = await supabase.storage.from('pilot-photos').upload(path, dataUrlToBlob(s.dataUrl), { contentType: 'image/jpeg' });
+    if (error) return `写真を保存できませんでした（${error.message}）`;
+    w = s.width; h = s.height;
+  }
+  const { error } = await supabase.rpc('pilot_staff_add_reference', {
+    p_token: token, p_person_name: personName, p_image_path: path ?? '', p_image_width: w, p_image_height: h, p_source_note: sourceNote,
+  });
+  if (error) {
+    if (path) await supabase.storage.from('pilot-photos').remove([path]);
+    return `登録できませんでした（${error.message}）`;
+  }
+  return null;
 }
