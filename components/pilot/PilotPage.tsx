@@ -479,7 +479,8 @@ function Session({ token, info, onReload, onSwitch, onOpenSurvey, surveySent }: 
       )}
 
       {/* ── 自分で挙げた人との比較（数字と三角形だけ。判定や技法は出さない） */}
-      {myRefs.length > 0 && <MyRefCompare refs={myRefs} history={info.history} />}
+      {/* 「言われて嫌だった人」は比較に出さない */}
+      {myRefs.some(r => r.kind !== 'dislike') && <MyRefCompare refs={myRefs.filter(r => r.kind !== 'dislike')} history={info.history} />}
 
       {/* ── あなたの記録（回ごと）と、黄金比からのずれの変化 */}
       <Card>
