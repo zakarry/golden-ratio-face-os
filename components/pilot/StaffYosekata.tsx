@@ -13,10 +13,11 @@ import { fetchSurveyForStaff, REFERENCE_KIND_LABEL, type StaffReferenceRow } fro
 import type { Tri, YoseResult, YoseRow } from '@/lib/pilot/yosekata';
 import { YOSEKATA_VERSION } from '@/lib/pilot/yosekata';
 import { SMARTPHONE_NOTE } from '@/lib/pilot/targetCard';
+import { TRI_COLOR, TriangleLegend, TriangleSvg } from './RefCompare';
 import { buildYoseBundle, fetchRecordGuide, listSavedYosekata, yoseSubjectFromRecords, saveYosekata, type SavedYoseRow } from '@/lib/pilot/yosekataStaff';
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' });
-const COLOR = { self: '#1c1917', target: '#2563eb', ideal: '#dc2626' };
+const COLOR = TRI_COLOR;
 
 export default function StaffYosekata({ code, token, history }: { code: string; token: string; history: PilotHistoryItem[] }) {
   const { subject, retake } = useMemo(() => yoseSubjectFromRecords(history), [history]);
@@ -105,7 +106,7 @@ function TargetView({ r }: { r: YoseResult }) {
         <div className="space-y-1">
           <p className="text-xs font-semibold text-stone-600">逆三角形（両目と口・単位は顔幅）</p>
           <TriangleSvg tri={r.triangle} showTarget={r.targetKind !== 'ideal'} />
-          <Legend tn={tn} showTarget={r.targetKind !== 'ideal'} />
+          <TriangleLegend targetLabel={tn} showTarget={r.targetKind !== 'ideal'} />
         </div>
         <div className="space-y-1 min-w-0 flex-1">
           <p className="text-xs font-semibold text-stone-600">ずれ地図（中央＝本人、灰色＝許容幅、横軸は許容幅の何倍か）</p>
@@ -116,31 +117,6 @@ function TargetView({ r }: { r: YoseResult }) {
       {r.config.selfCorrection?.eyeDist != null && <p className="text-[10px] text-stone-500">目間距離は{SMARTPHONE_NOTE}を入れて黄金比と比べています{r.targetKind !== 'ideal' && '（この人との差には入れていません）'}。</p>}
       <pre className="whitespace-pre-wrap text-xs text-stone-800 bg-stone-50 rounded-lg p-3 font-sans leading-relaxed">{r.text}</pre>
     </div>
-  );
-}
-
-function Legend({ tn, showTarget }: { tn: string; showTarget: boolean }) {
-  return (
-    <p className="text-[10px] text-stone-500 flex gap-3">
-      <span><span style={{ color: COLOR.self }}>━</span> 本人</span>
-      {showTarget && <span><span style={{ color: COLOR.target }}>━</span> {tn}</span>}
-      <span><span style={{ color: COLOR.ideal }}>┅</span> 黄金比</span>
-    </p>
-  );
-}
-
-/** 底辺の中点と目の高さを揃えて重ねる */
-function TriangleSvg({ tri, showTarget }: { tri: YoseResult['triangle']; showTarget: boolean }) {
-  const S = 300, W = 0.7 * S, H = Math.max(tri.self.height, tri.target.height, tri.ideal.height) * S + 30;
-  const pts = (t: Tri) => `${W / 2 - t.base / 2 * S},15 ${W / 2 + t.base / 2 * S},15 ${W / 2},${15 + t.height * S}`;
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="bg-stone-50 rounded-lg">
-      <line x1={0} x2={W} y1={15} y2={15} stroke="#e7e5e4" />
-      <polygon points={pts(tri.ideal)} fill="none" stroke={COLOR.ideal} strokeWidth={1.5} strokeDasharray="4 3" />
-      {showTarget && <polygon points={pts(tri.target)} fill="none" stroke={COLOR.target} strokeWidth={2} />}
-      <polygon points={pts(tri.self)} fill="none" stroke={COLOR.self} strokeWidth={2} />
-      <circle cx={W / 2} cy={15} r={2.5} fill={COLOR.self} />
-    </svg>
   );
 }
 

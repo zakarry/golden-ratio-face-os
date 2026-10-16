@@ -70,6 +70,9 @@ export interface ReferencePerson {
   source_note?: string | null;
   /** 端末上のプレビュー（未送信の画像） */
   localDataUrl?: string;
+  /** 運営が写真を測った値（本人の比較表示に使う。未測定なら null） */
+  metrics?: Record<string, number> | null;
+  measured_at?: string | null;
 }
 
 export type SurveyAnswers = Record<string, string | string[]>;

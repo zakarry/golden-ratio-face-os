@@ -23,7 +23,10 @@ import {
 import PilotHistory, { RxList } from './PilotHistory';
 import PilotCamera from './PilotCamera';
 import SurveyPage from './SurveyPage';
-import { fetchSurvey } from '@/lib/pilot/survey';
+import { fetchSurvey, REFERENCE_KIND_LABEL, type ReferencePerson } from '@/lib/pilot/survey';
+import type { PilotHistoryItem } from '@/lib/pilot/pilotStorage';
+import { yoseSubjectFromRecords } from '@/lib/pilot/yosekataStaff';
+import { CompareTable, RefTriangle } from './RefCompare';
 
 type DetectState = 'idle' | 'detecting' | 'done' | 'error';
 type Age = 'adult' | 'minor' | null;
@@ -115,7 +118,9 @@ function Session({ token, info, onReload, onSwitch, onOpenSurvey, surveySent }: 
 }) {
   // 事前アンケートを送ったかどうか（ボタンの表示に使う）
   const [surveyAt, setSurveyAt] = useState<string | null>(null);
-  useEffect(() => { let alive = true; fetchSurvey(token).then(d => { if (alive) setSurveyAt(d?.submitted_at ?? null); }); return () => { alive = false; }; }, [token, surveySent]);
+  // 自分で挙げた似ている人（運営が測った値つき。運営が見る人は含まれない）
+  const [myRefs, setMyRefs] = useState<ReferencePerson[]>([]);
+  useEffect(() => { let alive = true; fetchSurvey(token).then(d => { if (alive) { setSurveyAt(d?.submitted_at ?? null); setMyRefs(d?.references ?? []); } }); return () => { alive = false; }; }, [token, surveySent]);
   // ── 同意（1人1回。サーバーに記録するので、次回以降や別の端末では聞かない）
   const [consent, setConsentState] = useState<ConsentState>(EMPTY_CONSENT);
   const setConsent = useCallback((patch: Partial<ConsentState>) => setConsentState(prev => ({ ...prev, ...patch })), []);
@@ -473,12 +478,55 @@ function Session({ token, info, onReload, onSwitch, onOpenSurvey, surveySent }: 
         </Card>
       )}
 
+      {/* ── 自分で挙げた人との比較（数字と三角形だけ。判定や技法は出さない） */}
+      {myRefs.length > 0 && <MyRefCompare refs={myRefs} history={info.history} />}
+
       {/* ── あなたの記録（回ごと）と、黄金比からのずれの変化 */}
       <Card>
         <p className="text-sm font-semibold text-stone-800 flex items-center gap-2"><ClipboardList className="w-4 h-4" /> あなたの記録</p>
         <PilotHistory history={info.history} getUrls={getUrls} />
       </Card>
     </>
+  );
+}
+
+/** 自分で挙げた人との比較。比べる「あなた」の値は運営と同じ（写り○かつ傾き 8〜20° のメイク前の中央値） */
+function MyRefCompare({ refs, history }: { refs: ReferencePerson[]; history: PilotHistoryItem[] }) {
+  const measured = refs.filter(r => r.metrics);
+  const [sel, setSel] = useState(0);
+  const self = useMemo(() => yoseSubjectFromRecords(history).subject?.metrics ?? null, [history]);
+  const cur = measured[Math.min(sel, measured.length - 1)];
+  return (
+    <Card>
+      <p className="text-sm font-semibold text-stone-800">あなたと、挙げた人の比較</p>
+      <p className="text-[11px] text-stone-500 leading-relaxed">アンケートで挙げた人の写真を運営が測り、あなたの顔の設計図と並べています。似ている・違うの目安で、評価ではありません。</p>
+      {measured.length === 0 && <p className="text-xs text-stone-500">運営が写真を測ると、ここに比較が出ます（{refs.length}人を受け付けています）。</p>}
+      {measured.length > 0 && (
+        <>
+          <div className="flex flex-wrap gap-1.5">
+            {measured.map((r, i) => (
+              <button key={r.id} type="button" onClick={() => setSel(i)}
+                className={`rounded-full px-3 py-1 text-xs border ${r === cur ? 'bg-stone-800 text-white border-stone-800' : 'bg-white text-stone-700 border-stone-200'}`}>
+                {r.person_name}<span className="opacity-60 ml-1 text-[10px]">{REFERENCE_KIND_LABEL[r.kind]}</span>
+              </button>
+            ))}
+          </div>
+          {!self && <p className="text-xs text-stone-500">あなたの「メイク前」の写真（写り○）がまだないので、比較できません。</p>}
+          {self && cur?.metrics && (
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-stone-600">両目と口の三角形（顔の幅を1とした大きさ）</p>
+                <RefTriangle subject={self} ref_={cur.metrics as unknown as PilotMetrics} selfLabel="あなた" targetLabel={cur.person_name} />
+              </div>
+              <div className="overflow-x-auto">
+                <CompareTable subject={self} ref_={cur.metrics as unknown as PilotMetrics} selfLabel="あなた" otherLabel={cur.person_name} />
+              </div>
+            </div>
+          )}
+          {refs.length > measured.length && <p className="text-[11px] text-stone-400">ほかに {refs.length - measured.length}人は、まだ測っていません。</p>}
+        </>
+      )}
+    </Card>
   );
 }
 

@@ -7,8 +7,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ClipboardList, Ruler, Save, ImageOff, UserPlus } from 'lucide-react';
 import { addStaffReference, flattenAnswers, fetchSurveyForStaff, REFERENCE_KIND_LABEL, type ReferenceKind, type StaffReferenceRow, type StaffSurveyRow } from '@/lib/pilot/survey';
-import { compareMetrics, measureReferenceImage, saveReferenceMetrics, signedUrl, type ReferenceMeasurement } from '@/lib/pilot/referenceMeasure';
-import { formatMetric, type PilotMetrics } from '@/lib/pilot/targetCard';
+import { measureReferenceImage, saveReferenceMetrics, signedUrl, type ReferenceMeasurement } from '@/lib/pilot/referenceMeasure';
+import type { PilotMetrics } from '@/lib/pilot/targetCard';
+import { CompareTable } from './RefCompare';
 
 const KINDS: ReferenceKind[] = ['self_happy', 'others_say', 'dislike', 'staff_say'];
 
@@ -174,29 +175,6 @@ function AddStaffReference({ token, onAdded }: { token: string; onAdded: () => v
       {msg && <p className="text-rose-700">{msg}</p>}
       <p className="text-stone-400">登録したら、下の「測定」→「保存」で寄せ方に出ます。</p>
     </div>
-  );
-}
-
-/** 本人と参照を並べた表（差＝本人−参照） */
-function CompareTable({ subject, ref_ }: { subject: PilotMetrics | null; ref_: PilotMetrics }) {
-  if (!subject) {
-    return <p className="text-stone-500">本人の「メイク前」の撮影がまだないので、比較できません（参照の値だけ保存できます）。</p>;
-  }
-  const rows = compareMetrics(subject, ref_);
-  return (
-    <table className="w-full text-xs bg-white rounded-lg">
-      <thead><tr className="text-stone-400 text-[10px]"><th className="text-left py-1 px-2">指標</th><th className="text-right px-2">本人</th><th className="text-right px-2">この人</th><th className="text-right px-2">差</th><th className="text-right px-2">黄金比</th></tr></thead>
-      <tbody>{rows.map(r => (
-        <tr key={r.id} className={`border-t border-stone-100 ${r.close ? 'text-emerald-700' : 'text-stone-700'}`}>
-          <td className="py-1 px-2">{r.label}{r.forehead && <span className="text-[9px] text-stone-400 ml-1">額推定</span>}</td>
-          <td className="text-right px-2 tabular-nums">{formatMetric(r.subject, r.unit)}</td>
-          <td className="text-right px-2 tabular-nums">{formatMetric(r.ref, r.unit)}</td>
-          <td className="text-right px-2 tabular-nums">{(r.diff >= 0 ? '+' : '') + formatMetric(r.diff, r.unit)}</td>
-          <td className="text-right px-2 tabular-nums text-stone-400">{formatMetric(r.ideal, r.unit)}</td>
-        </tr>
-      ))}</tbody>
-      <tfoot><tr><td colSpan={5} className="px-2 py-1 text-[10px] text-stone-400">緑＝本人とこの人がほぼ同じ（差が 0.02 以内、角度は 2° 以内）</td></tr></tfoot>
-    </table>
   );
 }
 
