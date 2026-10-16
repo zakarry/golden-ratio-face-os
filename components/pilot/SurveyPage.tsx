@@ -225,8 +225,9 @@ export default function SurveyPage({ token = '', onDone, official = false, onSki
         </button>
         {needPhoto && list.length > 0 && (
           <div className="rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
-            写真の条件：正面を向いていて顔が傾いていない／前髪で眉が隠れていない／加工やスタンプなし（画面写真でもOK）。
-            「この写真が似ていると言われた」というものがあれば、それが一番です。
+            <span className="font-semibold">写真は、あなたではなく挙げた方ご本人の写真です。</span>
+            条件：正面を向いていて顔が傾いていない／前髪で眉が隠れていない／加工やスタンプなし（画面写真でもOK）。
+            その方の写真で「この写真の頃に似ていると言われた」というものがあれば、それが一番です。
           </div>
         )}
       </div>
