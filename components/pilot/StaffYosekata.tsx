@@ -61,7 +61,7 @@ export default function StaffYosekata({ code, token, history }: { code: string; 
     <div className="rounded-2xl border border-stone-200 bg-white p-4 space-y-4">
       <div className="flex items-center gap-2 flex-wrap">
         <p className="text-sm font-semibold text-stone-800 flex items-center gap-2"><Compass className="w-4 h-4" /> 寄せ方</p>
-        {subject && <span className="text-xs text-stone-500">本人＝写り○・傾き8〜20°のメイク前 {subject.count}枚の中央値（最新 {fmtDate(subject.takenAt)}）</span>}
+        {subject && <span className="text-xs text-stone-500">本人＝写り○・傾き8〜20°・近すぎないメイク前 {subject.count}枚の中央値（最新 {fmtDate(subject.takenAt)}）</span>}
         <span className="text-[10px] text-stone-400">計算の版 {YOSEKATA_VERSION}</span>
         <div className="ml-auto flex gap-2">
           <div className="flex rounded-lg border border-stone-300 overflow-hidden divide-x divide-stone-300 text-xs" title="目的：形の判定は変わらず、強度と言葉だけが変わる">
@@ -76,7 +76,7 @@ export default function StaffYosekata({ code, token, history }: { code: string; 
       {msg && <p className="text-xs text-stone-600">{msg}</p>}
       {error && <p className="text-xs text-rose-700">{error}</p>}
       {!subject && (retake
-        ? <p className="text-xs font-semibold text-amber-700">{retake.label}：{retake.reason}。写り○で傾き 8〜20° のメイク前が1枚入ると、寄せ方が出ます。</p>
+        ? <p className="text-xs font-semibold text-amber-700">{retake.label}：{retake.reason}。写り○・傾き 8〜20°・近すぎないメイク前が1枚入ると、寄せ方が出ます。</p>
         : <p className="text-xs text-stone-500">まだ撮影がないので、寄せ方は出せません。</p>)}
       {subject && !refs && !error && <p className="text-xs text-stone-400">読み込んでいます…</p>}
 

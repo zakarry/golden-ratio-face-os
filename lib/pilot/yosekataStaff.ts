@@ -1,9 +1,9 @@
 // 運営ページ用の寄せ方（yosekata.ts の計算を、参加者の記録と「似ている人」につなぐ）
-// 本人＝写り○かつ傾き 8〜20° の「メイク前」の記録の中央値、目標＝黄金比＋測定済みの似ている人全員。
+// 本人＝写り○かつ傾き 8〜20°かつ近すぎない「メイク前」の記録の中央値、目標＝黄金比＋測定済みの似ている人全員。
 
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import { METRIC_DEFS, type PilotMetrics } from './targetCard';
-import { pitchInRange, retakeStatus, type RetakeStatus } from './pilotStorage';
+import { retakeStatus, usableBefore, type RetakeStatus } from './pilotStorage';
 import type { StaffReferenceRow } from './survey';
 import { buildYosekata, summarizeYosekata, PILOT_PURPOSE, SMARTPHONE_YOSE_CORRECTION, YOSEKATA_VERSION, type YosePurpose, type YoseResult, type YoseSummaryRow } from './yosekata';
 
@@ -13,7 +13,7 @@ export interface YoseSubjectRecord {
   taken_at?: string;
   takenAt?: string;
   metrics: PilotMetrics | Record<string, number> | null;
-  framing: { ok?: boolean; pitch?: number; warnings?: string[] } | null;
+  framing: { ok?: boolean; pitch?: number; faceWidthFrac?: number; warnings?: string[] } | null;
 }
 
 
@@ -34,8 +34,8 @@ const when = (r: YoseSubjectRecord) => r.taken_at ?? r.takenAt ?? '';
  * retake：本人の値に使えるメイク前が1枚もないとき、その理由（写り×だけ／傾きが範囲外だけ／メイク前なし）
  */
 export function yoseSubjectFromRecords(records: YoseSubjectRecord[]): { subject: YoseSubject | null; retake: RetakeStatus | null } {
-  const okBefore = records.filter(r => r.phase === 'before' && r.framing?.ok === true && r.metrics);
-  const use = okBefore.filter(r => pitchInRange(r.framing?.pitch)).sort((a, b) => when(a).localeCompare(when(b)));
+  // 写り○かつ傾き 8〜20°かつ顔の大きさが基準内（近すぎない）のメイク前だけ
+  const use = records.filter(r => r.metrics && usableBefore(r)).sort((a, b) => when(a).localeCompare(when(b)));
   if (!use.length) return { subject: null, retake: retakeStatus(records) };
   const metrics = {} as PilotMetrics;
   for (const d of METRIC_DEFS) {

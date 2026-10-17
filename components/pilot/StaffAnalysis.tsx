@@ -78,7 +78,7 @@ export default function StaffAnalysis({ list }: { list: ParticipantSummary[] }) 
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-3 flex-wrap text-xs">
-        <p className="text-stone-600">対象 {realCount}名{subjects.length > realCount && `（＋テスト ${subjects.length - realCount}名）`}　<span className="text-stone-400">写り○・傾き8〜20°のメイク前の中央値</span>{retake.filter(r => !r.test).length > 0 && <span className="text-amber-700 font-semibold">要撮り直し {retake.filter(r => !r.test).length}名</span>}
+        <p className="text-stone-600">対象 {realCount}名{subjects.length > realCount && `（＋テスト ${subjects.length - realCount}名）`}　<span className="text-stone-400">写り○・傾き8〜20°・近すぎないメイク前の中央値</span>{retake.filter(r => !r.test).length > 0 && <span className="text-amber-700 font-semibold">要撮り直し {retake.filter(r => !r.test).length}名</span>}
         {notStarted.length > 0 && <span className="text-stone-500">未撮影 {notStarted.length}名（{notStarted.join('、')}）</span>}</p>
         <div className="flex rounded-lg border border-stone-300 overflow-hidden divide-x divide-stone-300">
           {([['gray', 'テストは灰色'], ['exclude', 'テストを除外']] as const).map(([v, l]) => (

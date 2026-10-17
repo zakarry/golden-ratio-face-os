@@ -126,7 +126,7 @@ export default function PilotCamera({ onCapture, onFallback }: { onCapture: (dat
 
   // ── ガイドの形（映像の画素座標）
   const vw = dims?.w ?? 3, vh = dims?.h ?? 4;
-  const rx = vw * 0.27;                                   // 楕円の幅＝画面幅の54%
+  const rx = vw * 0.26;                                   // 楕円の幅＝画面幅の52%（顔の大きさの基準 0.38〜0.45 の真ん中に合わせる）
   const ry = Math.min(rx * 1.3, vh * 0.4);                // 上下に余白を残す（髪の上と首が入るように）
   const cy = Math.min(Math.max(vh * 0.47, ry + vh * 0.07), vh - ry - vh * 0.02);
   const cx = vw / 2;

@@ -283,7 +283,8 @@ export const FRAMING_LIMITS = {
   roll: 3,
   /** 画像幅に対する顔幅 */
   faceMin: 0.38,
-  faceMax: 0.62,
+  // 近すぎると目間距離などが大きく出る（距離の影響）。腕をいっぱいに伸ばした距離に合わせて 0.62 → 0.45
+  faceMax: 0.45,
   /** 視線：黒目の中心が目頭〜目尻のこの範囲（両目とも） */
   gazeMin: 0.4,
   gazeMax: 0.6,
@@ -294,12 +295,22 @@ export const FRAMING_LIMITS = {
   pitchMax: 20,
 } as const;
 
+/** 顔の大きさ（画像幅に対する顔幅）が今の基準内か。値が無い古い記録は基準外として扱う */
+export function sizeInRange(f: number | undefined | null) {
+  return f != null && f >= FRAMING_LIMITS.faceMin && f <= FRAMING_LIMITS.faceMax;
+}
+
+/** 本人の値に使えるメイク前：写り○かつ傾き 8〜20°かつ顔の大きさが基準内 */
+export function usableBefore(r: { phase: string; framing: { ok?: boolean; pitch?: number; faceWidthFrac?: number } | null }) {
+  return r.phase === 'before' && r.framing?.ok === true && pitchInRange(r.framing?.pitch) && sizeInRange(r.framing?.faceWidthFrac);
+}
+
 /** 上下の傾きが基準内か（8〜20°）。傾きが無い記録は基準外として扱う */
 export function pitchInRange(p: number | undefined | null) {
   return p != null && p >= FRAMING_LIMITS.pitchMin && p <= FRAMING_LIMITS.pitchMax;
 }
 
-export type RetakeKind = 'framing' | 'pitch' | 'noBefore';
+export type RetakeKind = 'framing' | 'pitch' | 'tooClose' | 'tooFar' | 'noBefore';
 export interface RetakeStatus {
   kind: RetakeKind;
   /** 運営ページの印 */
@@ -308,7 +319,7 @@ export interface RetakeStatus {
   reason: string;
 }
 
-type RetakeRecord = { phase: string; taken_at?: string; takenAt?: string; framing: { ok?: boolean; pitch?: number; warnings?: string[] } | null };
+type RetakeRecord = { phase: string; taken_at?: string; takenAt?: string; framing: { ok?: boolean; pitch?: number; faceWidthFrac?: number; warnings?: string[] } | null };
 
 /** 写り×になった理由（保存された注意の文から） */
 function framingReason(warnings: string[] | undefined): string {
@@ -317,7 +328,7 @@ function framingReason(warnings: string[] | undefined): string {
   if (/見下ろす|見上げる/.test(w)) return '顔の上下の角度（スマホの高さ）がずれていました';
   if (/傾いて/.test(w)) return '顔が左右に傾いていました';
   if (/小さすぎ/.test(w)) return '顔が小さく写っていました（もう少し近づいてください）';
-  if (/大きすぎ/.test(w)) return '顔が大きく写っていました（少し離れてください）';
+  if (/大きすぎ|近すぎ/.test(w)) return 'スマホが顔に近すぎました（腕をいっぱいに伸ばして撮ってください）';
   if (/視線|まばたき/.test(w)) return '視線がレンズからそれていました';
   return '写りの条件を満たしていませんでした';
 }
@@ -335,7 +346,17 @@ export function retakeStatus(records: RetakeRecord[]): RetakeStatus | null {
     const latest = [...before].sort((a, b) => (a.taken_at ?? a.takenAt ?? '').localeCompare(b.taken_at ?? b.takenAt ?? '')).pop();
     return { kind: 'framing', label: '要撮り直し（写り）', reason: framingReason(latest?.framing?.warnings) };
   }
-  if (!okBefore.some(r => pitchInRange(r.framing?.pitch))) return { kind: 'pitch', label: '要撮り直し（傾き）', reason: '顔の上下の角度（スマホの高さ）がずれていました' };
+  const pitchOk = okBefore.filter(r => pitchInRange(r.framing?.pitch));
+  if (pitchOk.length === 0) return { kind: 'pitch', label: '要撮り直し（傾き）', reason: '顔の上下の角度（スマホの高さ）がずれていました' };
+  // 前の基準（0.62 まで）で写り○になった写真でも、今の基準（0.45 まで）より近いものは使わない
+  // 小さすぎ（遠すぎ）も同じく使わない。どちらかはいちばん新しい写真で決める
+  if (!pitchOk.some(r => sizeInRange(r.framing?.faceWidthFrac))) {
+    const latest = [...pitchOk].sort((a, b) => (a.taken_at ?? a.takenAt ?? '').localeCompare(b.taken_at ?? b.takenAt ?? '')).pop();
+    const f = latest?.framing?.faceWidthFrac;
+    return f != null && f < FRAMING_LIMITS.faceMin
+      ? { kind: 'tooFar', label: '要撮り直し（遠すぎ）', reason: '顔が小さく写っていました（顔を楕円に合わせて撮ってください）' }
+      : { kind: 'tooClose', label: '要撮り直し（近すぎ）', reason: 'スマホが顔に近すぎました（腕をいっぱいに伸ばして撮ってください）' };
+  }
   return null;
 }
 
@@ -351,7 +372,7 @@ export const FRAMING_HINT: Record<FramingIssue, string> = {
   yaw: '正面へ',
   roll: '傾いています',
   small: '近づいて',
-  large: '少し離れて',
+  large: 'スマホを少し離してください（腕をいっぱいに伸ばす）',
   gaze: 'レンズを見てください',
   eyeOpen: 'レンズを見てください',
   pitchHigh: 'スマホを目の高さに',
@@ -402,7 +423,7 @@ export function checkFraming(g: DetectedGuide, imageW: number, imageH: number): 
     yaw: yaw > 0 ? '顔が少し左を向いています（本人の右側が見えすぎ）。正面へ' : '顔が少し右を向いています。正面へ',
     roll: `顔が${Math.abs(roll).toFixed(0)}°傾いています。目の高さを水平に`,
     small: '顔が小さすぎます。もう少し近づいてください',
-    large: '顔が大きすぎます。少し離れてください',
+    large: 'スマホが近すぎます。スマホを少し離してください（腕をいっぱいに伸ばす）',
     gaze: '視線がそれています。カメラのレンズを見てください',
     eyeOpen: 'まばたきか、視線が下がっています。カメラのレンズを見てください',
     pitchHigh: `顔を見下ろす角度です（${pitch?.toFixed(0)}°）。スマホを目の高さにしてください`,
