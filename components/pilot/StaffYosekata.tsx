@@ -4,14 +4,15 @@
 // 本人（写り○の最新のメイク前）と、目標（黄金比＋測定済みの似ている人）を計算で比べる。生成AIは使わない。
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Compass, RefreshCw, Save } from 'lucide-react';
+import { Compass, Copy, RefreshCw, Save } from 'lucide-react';
 import type { DetectedGuide } from '@/lib/faceLandmarks';
 import type { PilotHistoryItem } from '@/lib/pilot/pilotStorage';
 import { STRENGTH_LABEL } from '@/lib/pilot/prescription';
 import { staffMediaUrls } from '@/lib/pilot/staff';
 import { fetchSurveyForStaff, REFERENCE_KIND_LABEL, type StaffReferenceRow } from '@/lib/pilot/survey';
-import type { Tri, YoseResult, YoseRow } from '@/lib/pilot/yosekata';
-import { YOSEKATA_VERSION } from '@/lib/pilot/yosekata';
+import type { YosePurpose, YoseResult, YoseRow } from '@/lib/pilot/yosekata';
+import { PILOT_PURPOSE, YOSE_PURPOSES, YOSEKATA_VERSION } from '@/lib/pilot/yosekata';
+import { buildGeminiPrompt } from '@/lib/pilot/geminiPrompt';
 import { SMARTPHONE_NOTE } from '@/lib/pilot/targetCard';
 import { TRI_COLOR, TriangleLegend, TriangleSvg } from './RefCompare';
 import { buildYoseBundle, fetchRecordGuide, listSavedYosekata, yoseSubjectFromRecords, saveYosekata, type SavedYoseRow } from '@/lib/pilot/yosekataStaff';
@@ -24,6 +25,8 @@ export default function StaffYosekata({ code, token, history }: { code: string; 
   const [refs, setRefs] = useState<StaffReferenceRow[] | null>(null);
   const [saved, setSaved] = useState<SavedYoseRow[] | null>(null);
   const [sel, setSel] = useState(0);
+  // 目的（宣材／舞台／日常）。パイロットの既定は宣材
+  const [purpose, setPurpose] = useState<YosePurpose>(PILOT_PURPOSE);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
@@ -42,7 +45,7 @@ export default function StaffYosekata({ code, token, history }: { code: string; 
     return () => window.removeEventListener('pilot-refs-updated', load);
   }, [load]);
 
-  const bundle = useMemo(() => subject && refs ? buildYoseBundle(code, subject.metrics, refs) : null, [code, subject, refs]);
+  const bundle = useMemo(() => subject && refs ? buildYoseBundle(code, subject.metrics, refs, purpose) : null, [code, subject, refs, purpose]);
   const current = bundle?.results[Math.min(sel, bundle.results.length - 1)]?.result ?? null;
 
   const save = async () => {
@@ -61,6 +64,11 @@ export default function StaffYosekata({ code, token, history }: { code: string; 
         {subject && <span className="text-xs text-stone-500">本人＝写り○・傾き8〜20°のメイク前 {subject.count}枚の中央値（最新 {fmtDate(subject.takenAt)}）</span>}
         <span className="text-[10px] text-stone-400">計算の版 {YOSEKATA_VERSION}</span>
         <div className="ml-auto flex gap-2">
+          <div className="flex rounded-lg border border-stone-300 overflow-hidden divide-x divide-stone-300 text-xs" title="目的：形の判定は変わらず、強度と言葉だけが変わる">
+            {YOSE_PURPOSES.map(v => (
+              <button key={v} type="button" onClick={() => setPurpose(v)} className={`px-3 py-1.5 ${purpose === v ? 'bg-stone-800 text-white' : 'bg-white text-stone-700'}`}>{v}</button>
+            ))}
+          </div>
           <button type="button" onClick={() => { setMsg(''); load(); }} className={btn}><RefreshCw className="w-3.5 h-3.5" /> 再計算</button>
           {bundle && <button type="button" onClick={save} disabled={busy} className={saveBtn}><Save className="w-3.5 h-3.5" /> {busy ? '保存中…' : '保存'}</button>}
         </div>
@@ -98,6 +106,25 @@ export default function StaffYosekata({ code, token, history }: { code: string; 
 }
 
 // ── 1目標ぶん：三角形・ずれ地図・判定・文章
+/** 画像生成AI（Gemini）への指示文をコピー（運営・メイクさん向けの内部資料。本人には出さない） */
+function GeminiCopy({ r }: { r: YoseResult }) {
+  const [open, setOpen] = useState(false);
+  const [done, setDone] = useState(false);
+  const prompt = useMemo(() => buildGeminiPrompt(r), [r]);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(prompt); setDone(true); setTimeout(() => setDone(false), 2000); } catch { setOpen(true); }
+  };
+  return (
+    <div className="space-y-1">
+      <div className="flex gap-2 flex-wrap">
+        <button type="button" onClick={copy} className={btn}><Copy className="w-3.5 h-3.5" /> {done ? 'コピーしました' : 'Geminiへの指示文をコピー'}</button>
+        <button type="button" onClick={() => setOpen(v => !v)} className="text-[11px] text-stone-500 underline">{open ? '指示文を閉じる' : '指示文を見る'}</button>
+      </div>
+      {open && <pre className="whitespace-pre-wrap text-[11px] text-stone-700 bg-white border border-stone-200 rounded-lg p-3 font-sans leading-relaxed">{prompt}</pre>}
+    </div>
+  );
+}
+
 function TargetView({ r }: { r: YoseResult }) {
   const tn = r.targetKind === 'ideal' ? '黄金比' : r.targetName;
   return (
@@ -116,6 +143,7 @@ function TargetView({ r }: { r: YoseResult }) {
       <JudgeTable rows={r.rows} tn={tn} showIdeal={r.targetKind !== 'ideal'} />
       {r.config.selfCorrection?.eyeDist != null && <p className="text-[10px] text-stone-500">目間距離は{SMARTPHONE_NOTE}を入れて黄金比と比べています{r.targetKind !== 'ideal' && '（この人との差には入れていません）'}。</p>}
       <pre className="whitespace-pre-wrap text-xs text-stone-800 bg-stone-50 rounded-lg p-3 font-sans leading-relaxed">{r.text}</pre>
+      <GeminiCopy r={r} />
     </div>
   );
 }

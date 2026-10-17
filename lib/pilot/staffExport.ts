@@ -229,6 +229,7 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
     { header: 'コード', key: 'code', width: 10 },
     { header: '名前', key: 'name', width: 16 },
     { header: '本人の撮影日', key: 'at', width: 12 },
+    { header: '目的', key: 'purpose', width: 8 },
     { header: '指標', key: 'metric', width: 24 },
     { header: 'まとめ', key: 'verdict', width: 14 },
     { header: '方向', key: 'dir', width: 22 },
@@ -240,6 +241,7 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
     { header: 'コード', key: 'code', width: 10 },
     { header: '名前', key: 'name', width: 16 },
     { header: '本人の撮影日', key: 'at', width: 12 },
+    { header: '目的', key: 'purpose', width: 8 },
     { header: '目標', key: 'target', width: 18 },
     { header: '種類', key: 'kind', width: 18 },
     { header: '文章', key: 'text', width: 110 },
@@ -256,14 +258,14 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
     for (const s of bundle.summary) {
       const ir = ideal.rows.find(x => x.id === s.id);
       s5.addRow({
-        code: p.subjectCode, name: p.name, at, metric: s.label, verdict: s.verdict, dir: s.direction,
+        code: p.subjectCode, name: p.name, at, purpose: ideal.config.purpose ?? '', metric: s.label, verdict: s.verdict, dir: s.direction,
         by: Object.entries(s.byTarget).map(([n, d]) => `${n}：${d || '似ている'}`).join('／'),
         ideal: ir ? (ir.relation === 'same' ? '範囲内' : ir.direction) : '',
       });
     }
     for (const { result } of bundle.results) {
       s6.addRow({
-        code: p.subjectCode, name: p.name, at, target: result.targetName,
+        code: p.subjectCode, name: p.name, at, purpose: result.config.purpose ?? '', target: result.targetName,
         kind: result.targetKind === 'ideal' ? '黄金比' : REFERENCE_KIND_LABEL[result.targetKind], text: result.text,
       }).alignment = { vertical: 'top', wrapText: true };
     }

@@ -102,14 +102,20 @@ export interface YoseResult {
   triangle: { self: Tri; target: Tri; ideal: Tri };
   text: string;
   /** 計算の設定（校正で変わるので保存しておく） */
-  config: { tolerances: Record<YoseMetricId, number>; strengthRule: string; version: string; selfCorrection?: Partial<Record<YoseMetricId, number>> };
+  config: { tolerances: Record<YoseMetricId, number>; strengthRule: string; version: string; selfCorrection?: Partial<Record<YoseMetricId, number>>; purpose?: YosePurpose };
 }
 
 export interface Tri { base: number; height: number; shape: number }
 
 // 2026-10-13：目幅の理想 0.25→0.20、スマホ補正（目間距離 −0.014）を理想との比較に追加
 // 2026-10-13b：中顔面÷下顔面・人中比・目→口の高さを「下顔面」として1件にまとめる（文章・束ね表）
-export const YOSEKATA_VERSION = 'yosekata-2026-10-13b';
+// 2026-10-17：目的（宣材／舞台／日常）を config に持ち、近づける項目がないときの文を目的で変える
+export const YOSEKATA_VERSION = 'yosekata-2026-10-17';
+
+/** 目的。パイロット（ミス・ワールドの公式写真）の既定は「宣材」 */
+export type YosePurpose = '宣材' | '舞台' | '日常';
+export const YOSE_PURPOSES: YosePurpose[] = ['宣材', '舞台', '日常'];
+export const PILOT_PURPOSE: YosePurpose = '宣材';
 
 /** 強さの規則（仮）：差が許容幅の2倍まで弱、3倍まで標準、それ以上は強。打ち合わせで直す前提 */
 export function strengthFromRatio(ratio: number): Strength {
@@ -124,6 +130,8 @@ export interface YoseOptions {
   tolerances?: Partial<Record<YoseMetricId, number>>;
   /** 本人の値を理想と比べるときだけ足す補正（スマホ撮影の目間距離 −0.014 など）。参照人物との差には入れない */
   selfCorrection?: Partial<Record<YoseMetricId, number>>;
+  /** 目的（宣材／舞台／日常）。形（位置・大きさ・角度）の判定には使わず、強度と言葉だけを変える */
+  purpose?: YosePurpose;
 }
 
 export function buildYosekata(
@@ -170,7 +178,7 @@ export function buildYosekata(
     triangle: { self: tri(s), target: tri(t), ideal: tri(ideal) },
     // 黄金比が目標のときの本人の値は補正つき
     text: '',
-    config: { tolerances, strengthRule: '≤2倍=弱, ≤3倍=標準, >3倍=強（仮）', version: YOSEKATA_VERSION, ...(Object.keys(corr).length ? { selfCorrection: corr } : {}) },
+    config: { tolerances, strengthRule: '≤2倍=弱, ≤3倍=標準, >3倍=強（仮）', version: YOSEKATA_VERSION, ...(Object.keys(corr).length ? { selfCorrection: corr } : {}), ...(opts.purpose ? { purpose: opts.purpose } : {}) },
   };
   result.text = yosekataToText(result);
   return result;
@@ -245,7 +253,12 @@ export function yosekataToText(r: YoseResult): string {
     for (const x of conflict) L.push(`　・${x.label}を${x.direction}　差${fmtGap(x.gap, x.unit)}　→寄せるか、黄金比を優先するか打ち合わせで決める`);
   }
   if (keep.length) L.push('追わないところ（本人の方が黄金比に近い）：' + keep.map(x => x.label).join('、'));
-  if (!agree.length && !conflict.length) L.push('近づける項目はない。配置はすでに揃っている。');
+  if (!agree.length && !conflict.length) {
+    L.push('近づける項目はない。配置はすでに揃っている。');
+    // 宣材は写真で弱く見えないよう、形は触らずに強度だけ上げる（位置・大きさ・角度の指示は出さない）
+    if (r.config.purpose === '宣材') L.push('形は触らず、目・眉・唇の強度を標準以上に上げる（宣材）。');
+  }
+  if (r.config.purpose) L.push(`目的：${r.config.purpose}`);
   if (r.config.selfCorrection?.eyeDist) L.push(`※目間距離は${SMARTPHONE_NOTE}を入れて黄金比と比べている`);
   return L.join('\n');
 }

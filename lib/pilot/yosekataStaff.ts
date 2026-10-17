@@ -5,7 +5,7 @@ import { getSupabaseClient } from '@/lib/supabaseClient';
 import { METRIC_DEFS, type PilotMetrics } from './targetCard';
 import { pitchInRange, retakeStatus, type RetakeStatus } from './pilotStorage';
 import type { StaffReferenceRow } from './survey';
-import { buildYosekata, summarizeYosekata, SMARTPHONE_YOSE_CORRECTION, YOSEKATA_VERSION, type YoseResult, type YoseSummaryRow } from './yosekata';
+import { buildYosekata, summarizeYosekata, PILOT_PURPOSE, SMARTPHONE_YOSE_CORRECTION, YOSEKATA_VERSION, type YosePurpose, type YoseResult, type YoseSummaryRow } from './yosekata';
 
 export interface YoseSubjectRecord {
   id: string;
@@ -57,8 +57,8 @@ export interface YoseBundle {
 const KIND_ORDER = ['self_happy', 'others_say', 'dislike', 'staff_say'];
 
 /** パイロットの記録はスマホ撮影なので、黄金比と比べるときは目間距離に −0.014 の補正を入れる */
-export function buildYoseBundle(code: string, self: PilotMetrics, refs: StaffReferenceRow[]): YoseBundle {
-  const opts = { selfCorrection: SMARTPHONE_YOSE_CORRECTION };
+export function buildYoseBundle(code: string, self: PilotMetrics, refs: StaffReferenceRow[], purpose: YosePurpose = PILOT_PURPOSE): YoseBundle {
+  const opts = { selfCorrection: SMARTPHONE_YOSE_CORRECTION, purpose };
   const measured = refs.filter(r => r.metrics).sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind));
   const results = [
     { result: buildYosekata(code, self, { name: '黄金比', kind: 'ideal', metrics: null }, opts), referenceId: null },
@@ -68,9 +68,9 @@ export function buildYoseBundle(code: string, self: PilotMetrics, refs: StaffRef
   return { results, summary: people.length ? summarizeYosekata(people) : [] };
 }
 
-/** 保存の id。版が変わったら別の行として残す（同じ版の再保存だけ上書き） */
-export function yoseId(recordId: string, referenceId: string | null) {
-  return `yose_${recordId}_${referenceId ?? 'ideal'}_${YOSEKATA_VERSION}`;
+/** 保存の id。版や目的が変わったら別の行として残す（同じ版・同じ目的の再保存だけ上書き） */
+export function yoseId(recordId: string, referenceId: string | null, purpose?: string) {
+  return `yose_${recordId}_${referenceId ?? 'ideal'}_${YOSEKATA_VERSION}${purpose ? `_${purpose}` : ''}`;
 }
 
 export async function saveYosekata(recordId: string, items: YoseBundle['results']): Promise<string | null> {
@@ -78,7 +78,7 @@ export async function saveYosekata(recordId: string, items: YoseBundle['results'
   if (!supabase) return 'Supabase 未設定';
   for (const { result, referenceId } of items) {
     const { error } = await supabase.rpc('pilot_staff_save_yosekata', {
-      p_id: yoseId(recordId, referenceId), p_record_id: recordId, p_reference_id: referenceId ?? '',
+      p_id: yoseId(recordId, referenceId, result.config.purpose), p_record_id: recordId, p_reference_id: referenceId ?? '',
       p_target_kind: result.targetKind, p_target_name: result.targetName,
       p_result: result, p_text: result.text, p_version: result.config.version,
     });
