@@ -29,6 +29,8 @@ export interface RenderRow {
   purpose: RenderPurpose | 'other';
   target_name: string | null;
   source_path: string;
+  /** 「強くして」で入力にした直前の生成画像（素顔から作ったときは null） */
+  input_path: string | null;
   image_path: string;
   image_width: number | null;
   image_height: number | null;
@@ -127,11 +129,14 @@ export function buildPrompt(yose: YoseResult, engine: RenderEngine, purpose: Ren
 export async function generateRender(args: {
   token: string; subjectCode: string; source: RenderSource; engine: RenderEngine; purpose: RenderPurpose;
   prompt: string; targetName?: string;
+  /** 「強くして」のとき：素顔ではなく直前の生成画像を入力にする（骨格の比較は素顔のまま） */
+  inputPath?: string;
 }): Promise<RenderRow> {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error('Supabase 未設定');
+  const inputPath = args.inputPath ?? args.source.path;
   const { data: j, error } = await supabase.functions.invoke('pilot-render', {
-    body: { token: args.token, sourcePath: args.source.path, prompt: args.prompt, engine: args.engine, label: args.purpose, width: args.source.width, height: args.source.height },
+    body: { token: args.token, sourcePath: inputPath, prompt: args.prompt, engine: args.engine, label: args.purpose, width: args.source.width, height: args.source.height },
   });
   if (error) throw new Error(await fnError(error));
 
@@ -141,9 +146,10 @@ export async function generateRender(args: {
   const { data: u } = await supabase.auth.getUser();
   const { data: row, error: insErr } = await supabase.from('pilot_renders').insert({
     token: args.token, subject_code: args.subjectCode, engine: args.engine, model: j.model ?? null, purpose: args.purpose,
-    target_name: args.targetName ?? null, source_path: args.source.path, image_path: j.path,
+    target_name: args.targetName ?? null, source_path: args.source.path, input_path: args.inputPath ?? null, image_path: j.path,
     image_width: m?.imageWidth ?? null, image_height: m?.imageHeight ?? null,
-    prompt: j.usedPrompt ?? args.prompt, prompt_version: RENDER_PROMPT_VERSION + (j.retried ? '+soften' : ''),
+    prompt: j.usedPrompt ?? args.prompt,
+    prompt_version: RENDER_PROMPT_VERSION + (args.inputPath ? '+strengthen' : '') + (j.retried ? '+soften' : ''),
     metrics: m?.metrics ?? null, source_metrics: args.source.metrics, diffs: cmp?.diffs ?? null, max_ratio: cmp?.maxRatio ?? null,
     skeleton_ok: cmp?.skeletonOk ?? null,
     aspect_ok: m ? aspectOk(args.source.width, args.source.height, m.imageWidth, m.imageHeight) : null,

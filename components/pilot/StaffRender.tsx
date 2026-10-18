@@ -89,15 +89,20 @@ export default function StaffRender({ code, token, history }: { code: string; to
   const ready = !!(source && yose && prompt);
   const enabled = (e: RenderEngine) => ready && !!status?.[e] && !running[e];
 
+  // 強くして：エンジンごとに、この用途の直前の生成画像を入力にして「今より一段強く」だけを送る（ChatGPT で手でやっていた流れ）
   const run = async (strengthen: boolean) => {
     if (!source || !yose) return;
-    const p = strengthen ? `${prompt}\n\n${buildStrengthenPrompt(purpose)}` : prompt;
-    const targets = ENGINES.filter(e => status?.[e]);
+    const targets = ENGINES.filter(e => status?.[e] && (!strengthen || latest[e]));
     setErrors({});
     setRunning(Object.fromEntries(targets.map(e => [e, true])));
     await Promise.all(targets.map(async engine => {
       try {
-        await generateRender({ token, subjectCode: code, source, engine, purpose, prompt: p, targetName: yose.target_kind === 'ideal' ? '黄金比' : yose.target_name });
+        await generateRender({
+          token, subjectCode: code, source, engine, purpose,
+          prompt: strengthen ? buildStrengthenPrompt(purpose) : prompt,
+          inputPath: strengthen ? latest[engine]!.image_path : undefined,
+          targetName: yose.target_kind === 'ideal' ? '黄金比' : yose.target_name,
+        });
       } catch (e) {
         setErrors(x => ({ ...x, [engine]: e instanceof Error ? e.message : String(e) }));
       } finally {
@@ -239,7 +244,7 @@ function Slot({ engine, row, url, running, error, onDecide, small }: {
     <div className={`space-y-1 rounded-lg border p-1.5 ${row ? badge : 'border-transparent'}`}>
       <p className="text-xs font-semibold text-stone-600 text-center">
         {RENDER_ENGINE_LABEL[engine]}
-        {row && <span className="font-normal text-[10px] text-stone-400 ml-1">{fmtDate(row.created_at)}{row.prompt_version?.endsWith('+soften') && '・言い換え'}</span>}
+        {row && <span className="font-normal text-[10px] text-stone-400 ml-1">{fmtDate(row.created_at)}{row.input_path && '・強く'}{row.prompt_version?.endsWith('+soften') && '・言い換え'}</span>}
         {row?.decision === 'adopted' && <span className="ml-1 text-[10px] text-emerald-700 font-semibold">採用</span>}
         {row?.decision === 'rejected' && <span className="ml-1 text-[10px] text-stone-500">不採用</span>}
       </p>
