@@ -55,13 +55,27 @@ export default function StaffRender({ code, token, history }: { code: string; to
     if (need.length) setUrls(await staffMediaUrls(need));
   }, [token]);
 
+  const loadSaved = useCallback(async () => {
+    const s = await listSavedYosekataResults(code);
+    setSaved(s);
+    // 選んでいた寄せ方が無くなった・まだ選んでいないときは最新を選ぶ
+    setYoseId(id => s.some(x => x.id === id) ? id : (s[0]?.id ?? ''));
+  }, [code]);
+
   useEffect(() => {
     setError('');
-    Promise.all([listSavedYosekataResults(code), fetchSurveyForStaff(token), loadRenders()])
-      .then(([s, sv]) => { setSaved(s); setAnswers(sv.survey?.answers ?? null); if (s[0]) setYoseId(id => id || s[0].id); })
+    Promise.all([loadSaved(), fetchSurveyForStaff(token), loadRenders()])
+      .then(([, sv]) => { setAnswers(sv.survey?.answers ?? null); })
       .catch(e => setError(e instanceof Error ? e.message : String(e)));
     fetchRenderStatus().then(setStatus).catch(e => setStatusErr(e instanceof Error ? e.message : String(e)));
-  }, [code, token, loadRenders]);
+  }, [token, loadSaved, loadRenders]);
+
+  // 上の「寄せ方」で保存したら、寄せ先の一覧を読み直す
+  useEffect(() => {
+    const onSaved = () => { loadSaved().catch(e => setError(e instanceof Error ? e.message : String(e))); };
+    window.addEventListener('pilot-yosekata-saved', onSaved);
+    return () => window.removeEventListener('pilot-yosekata-saved', onSaved);
+  }, [loadSaved]);
 
   // 素顔：選んだ記録の写真をブラウザで測り直す
   useEffect(() => {

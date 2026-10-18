@@ -54,7 +54,11 @@ export default function StaffYosekata({ code, token, history }: { code: string; 
     const err = await saveYosekata(subject.id, bundle.results);
     setBusy(false);
     setMsg(err ? `保存できませんでした（${err}）` : `保存しました（${bundle.results.length}件）`);
-    if (!err) listSavedYosekata(code).then(setSaved).catch(() => {});
+    if (!err) {
+      listSavedYosekata(code).then(setSaved).catch(() => {});
+      // 完成イメージ欄の「寄せ先」を読み直させる
+      window.dispatchEvent(new Event('pilot-yosekata-saved'));
+    }
   };
 
   return (

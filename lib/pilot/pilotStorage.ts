@@ -295,9 +295,9 @@ export const FRAMING_LIMITS = {
   pitchMax: 20,
 } as const;
 
-/** 顔の大きさ（画像幅に対する顔幅）が今の基準内か。値が無い古い記録は基準外として扱う */
+/** 顔の大きさ（画像幅に対する顔幅）が今の基準内か。値が無い古い記録（ガイド前）は判定しない（基準内として扱う） */
 export function sizeInRange(f: number | undefined | null) {
-  return f != null && f >= FRAMING_LIMITS.faceMin && f <= FRAMING_LIMITS.faceMax;
+  return f == null || (f >= FRAMING_LIMITS.faceMin && f <= FRAMING_LIMITS.faceMax);
 }
 
 /** 本人の値に使えるメイク前：写り○かつ傾き 8〜20°かつ顔の大きさが基準内 */
