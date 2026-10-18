@@ -109,6 +109,17 @@ export async function listSavedYosekata(subjectCode: string): Promise<SavedYoseR
   return (data ?? []) as SavedYoseRow[];
 }
 
+/** 保存済みの寄せ方を計算結果ごと（完成イメージの寄せ先に使う） */
+export async function listSavedYosekataResults(subjectCode: string): Promise<(SavedYoseRow & { result: YoseResult })[]> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('pilot_yosekata')
+    .select('id, record_id, reference_id, target_kind, target_name, text, version, created_by, created_at, result')
+    .eq('subject_code', subjectCode).order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as (SavedYoseRow & { result: YoseResult })[];
+}
+
 /** 撮影記録の顔の位置（写真に三角形を描くため） */
 export async function fetchRecordGuide(recordId: string) {
   const supabase = getSupabaseClient();

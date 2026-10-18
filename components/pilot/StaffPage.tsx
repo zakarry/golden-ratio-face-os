@@ -15,6 +15,7 @@ import type { PilotHistoryItem } from '@/lib/pilot/pilotStorage';
 import PilotHistory from './PilotHistory';
 import StaffSurvey from './StaffSurvey';
 import StaffYosekata from './StaffYosekata';
+import StaffRender from './StaffRender';
 import { yoseSubjectFromRecords } from '@/lib/pilot/yosekataStaff';
 import StaffCaptures from './StaffCaptures';
 import StaffAnalysis from './StaffAnalysis';
@@ -250,6 +251,8 @@ function Detail({ p, onBack }: { p: ParticipantSummary; onBack: () => void }) {
       <StaffSurvey token={p.token} subjectMetrics={history ? (yoseSubjectFromRecords(history).subject?.metrics ?? null) : null} />
       {/* 寄せ方（本人→黄金比・似ている人）。計算だけで出す */}
       {history && <StaffYosekata code={p.subjectCode} token={p.token} history={history} />}
+      {/* 完成イメージ（Gemini／ChatGPT で生成 → 測定 → 採否）。運営だけ */}
+      {history && <StaffRender code={p.subjectCode} token={p.token} history={history} />}
       {error && <p className="text-xs text-rose-700">{error}</p>}
       {!history && !error && <p className="text-xs text-stone-400">読み込んでいます…</p>}
       {history && <PilotHistory history={history} getUrls={staffMediaUrls} showPhotos />}

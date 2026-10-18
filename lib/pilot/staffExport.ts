@@ -7,6 +7,8 @@ import { buildYoseBundle, yoseSubjectFromRecords } from './yosekataStaff';
 import { yoseStrengths } from './yoseStrengths';
 import { staffMediaUrls, type ParticipantSummary } from './staff';
 import { fetchAllSurveysForStaff, flattenAnswers, REFERENCE_KIND_LABEL } from './survey';
+import { listAdoptedRenders, RENDER_ENGINE_LABEL, RENDER_PURPOSE_LABEL } from './render';
+import { YOSE_METRICS } from './yosekata';
 
 /** 写真つきのとき、Excel に貼る縮小画像の大きさ（px） */
 const THUMB_W = 120, THUMB_H = 160;
@@ -272,6 +274,58 @@ export async function downloadStaffExcel(list: ParticipantSummary[], origin: str
   }
   header(s5);
   header(s6);
+
+  // ── 完成イメージ（採用したものだけ。1人×用途で1行）。参加者のページには出さない
+  const adopted = await listAdoptedRenders();
+  const s7 = wb.addWorksheet('完成イメージ');
+  s7.columns = [
+    { header: 'コード', key: 'code', width: 10 },
+    { header: '名前', key: 'name', width: 16 },
+    ...(withImages ? [{ header: '素顔', key: 'imgSrc', width: 18 }, { header: '完成イメージ', key: 'imgOut', width: 18 }] : []),
+    { header: '用途', key: 'purpose', width: 8 },
+    { header: 'エンジン', key: 'engine', width: 10 },
+    { header: 'モデル', key: 'model', width: 22 },
+    { header: '寄せ先', key: 'target', width: 16 },
+    { header: '最大倍率', key: 'max', width: 9 },
+    { header: '骨格', key: 'skeleton', width: 9 },
+    { header: '画面比', key: 'aspect', width: 9 },
+    ...YOSE_METRICS.map(m => ({ header: `${m.label}（倍）`, key: `r_${m.id}`, width: 12 })),
+    { header: '症例一行', key: 'note', width: 50 },
+    { header: '作成日', key: 'at', width: 12 },
+    { header: '作成者', key: 'by', width: 22 },
+  ];
+  const renderThumbs = new Map<string, { base64: string; w: number; h: number } | null>();
+  if (withImages && adopted.length) {
+    const paths = Array.from(new Set(adopted.flatMap(r => [r.source_path, r.image_path])));
+    const urls: Record<string, string> = {};
+    for (let i = 0; i < paths.length; i += 100) Object.assign(urls, await staffMediaUrls(paths.slice(i, i + 100)));
+    await mapLimit(paths, 6, async p => { renderThumbs.set(p, urls[p] ? await thumbnail(urls[p]) : null); },
+      n => opts.onProgress?.(`完成イメージを取得中 ${n}/${paths.length}`));
+  }
+  adopted.forEach(r => {
+    const row: Record<string, unknown> = {
+      code: r.subject_code, name: nameOf.get(r.token) ?? '',
+      purpose: RENDER_PURPOSE_LABEL[r.purpose as keyof typeof RENDER_PURPOSE_LABEL] ?? r.purpose,
+      engine: RENDER_ENGINE_LABEL[r.engine as keyof typeof RENDER_ENGINE_LABEL] ?? r.engine, model: r.model ?? '', target: r.target_name ?? '',
+      max: r.max_ratio != null ? Math.round(Number(r.max_ratio) * 100) / 100 : '',
+      skeleton: r.skeleton_ok == null ? '測定なし' : r.skeleton_ok ? '許容内' : '許容超え',
+      aspect: r.aspect_ok == null ? '' : r.aspect_ok ? '同じ' : '変わった',
+      note: r.note ?? '', at: jstDate(r.created_at), by: r.created_by ?? '',
+    };
+    YOSE_METRICS.forEach(m => { const d = r.diffs?.[m.id]; row[`r_${m.id}`] = d ? Math.round(d.ratio * 100) / 100 : ''; });
+    const added = s7.addRow(row);
+    added.alignment = { vertical: 'top', wrapText: true };
+    if (withImages) {
+      added.height = THUMB_H * 0.75 + 6;
+      ([['imgSrc', r.source_path], ['imgOut', r.image_path]] as const).forEach(([key, path]) => {
+        const t = renderThumbs.get(path);
+        if (!t) return;
+        const id = wb.addImage({ base64: t.base64, extension: 'jpeg' });
+        s7.addImage(id, { tl: { col: s7.getColumn(key).number - 1 + 0.05, row: added.number - 1 + 0.03 }, ext: { width: t.w, height: t.h } });
+      });
+    }
+  });
+  header(s7);
 
   const buf = await wb.xlsx.writeBuffer();
   const a = document.createElement('a');
