@@ -232,9 +232,12 @@ export async function getParticipantHistory(token: string): Promise<PilotHistory
   return (data ?? []).map(toHistoryItem);
 }
 
+/** 運営ページの写真の URL は1時間有効（開いたままのページで切れないように。画面側でも定期的に取り直す） */
+export const STAFF_URL_SECONDS = 3600;
+
 export async function staffMediaUrls(paths: string[]): Promise<Record<string, string>> {
   const supabase = getSupabaseClient();
   if (!supabase || paths.length === 0) return {};
-  const { data } = await supabase.storage.from('pilot-photos').createSignedUrls(paths, 600);
+  const { data } = await supabase.storage.from('pilot-photos').createSignedUrls(paths, STAFF_URL_SECONDS);
   return Object.fromEntries((data ?? []).filter(d => d.signedUrl && d.path).map(d => [d.path as string, d.signedUrl]));
 }

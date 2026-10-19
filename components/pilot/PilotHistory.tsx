@@ -45,11 +45,14 @@ export default function PilotHistory({ history, getUrls, showPhotos = false }: {
   const [urls, setUrls] = useState<Record<string, string>>({});
 
   const pathsKey = useMemo(() => history.flatMap(h => [h.blueprintPath, h.dimensionPath, showPhotos ? h.imagePath : null]).filter((p): p is string => !!p).join('|'), [history, showPhotos]);
+  // 署名付きURLは期限があるので、開いている間は8分ごとに取り直す（参加者用は10分で切れる）
   useEffect(() => {
     if (!pathsKey) return;
     let alive = true;
-    getUrls(pathsKey.split('|')).then(u => { if (alive) setUrls(u); });
-    return () => { alive = false; };
+    const fetchAll = () => getUrls(pathsKey.split('|')).then(u => { if (alive) setUrls(u); }).catch(() => {});
+    fetchAll();
+    const t = setInterval(fetchAll, 8 * 60 * 1000);
+    return () => { alive = false; clearInterval(t); };
   }, [pathsKey, getUrls]);
 
   if (history.length === 0) return <p className="text-xs text-stone-400">まだ記録はありません。</p>;

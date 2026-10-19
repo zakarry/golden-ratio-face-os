@@ -25,7 +25,7 @@ export async function measureReferenceImage(src: string): Promise<ReferenceMeasu
 }
 
 /** storage の private 画像を署名付きURLで取る（スタッフのみ読める） */
-export async function signedUrl(path: string, seconds = 600): Promise<string | null> {
+export async function signedUrl(path: string, seconds = 3600): Promise<string | null> {
   const supabase = getSupabaseClient();
   if (!supabase) return null;
   await ensureAnonymousSession();
