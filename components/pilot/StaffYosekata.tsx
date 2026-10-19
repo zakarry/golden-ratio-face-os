@@ -15,15 +15,21 @@ import { PILOT_PURPOSE, YOSE_PURPOSES, YOSEKATA_VERSION } from '@/lib/pilot/yose
 import { buildGeminiPrompt } from '@/lib/pilot/geminiPrompt';
 import { SMARTPHONE_NOTE } from '@/lib/pilot/targetCard';
 import { TRI_COLOR, TriangleLegend, TriangleSvg } from './RefCompare';
-import { buildYoseBundle, fetchRecordGuide, listSavedYosekata, yoseSubjectFromRecords, saveYosekata, type SavedYoseRow } from '@/lib/pilot/yosekataStaff';
+import { buildYoseBundle, fetchRecordGuide, listSavedYosekata, yoseSubjectFromRecords, saveYosekata, saveYosekataFromStaffSource, type SavedYoseRow } from '@/lib/pilot/yosekataStaff';
+import { listStaffSources, type StaffSourceRow } from '@/lib/pilot/render';
+import StaffSourceUpload, { STAFF_SOURCE_EVENT } from './StaffSourceUpload';
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' });
 const COLOR = TRI_COLOR;
 
 export default function StaffYosekata({ code, token, history }: { code: string; token: string; history: PilotHistoryItem[] }) {
-  const { subject, retake } = useMemo(() => yoseSubjectFromRecords(history), [history]);
+  const { subject: recSubject, retake } = useMemo(() => yoseSubjectFromRecords(history), [history]);
   const [refs, setRefs] = useState<StaffReferenceRow[] | null>(null);
   const [saved, setSaved] = useState<SavedYoseRow[] | null>(null);
+  // 運営がアップロードした写真（撮影の場で撮り直したもの）。選んだときだけ本人として使う
+  const [staffSources, setStaffSources] = useState<StaffSourceRow[]>([]);
+  // 本人：'records'＝記録の中央値、'staff:<id>'＝運営の写真
+  const [subjSel, setSubjSel] = useState<string>('');
   const [sel, setSel] = useState(0);
   // 目的（宣材／舞台／日常）。パイロットの既定は宣材
   const [purpose, setPurpose] = useState<YosePurpose>(PILOT_PURPOSE);
@@ -34,26 +40,39 @@ export default function StaffYosekata({ code, token, history }: { code: string; 
   const load = useCallback(async () => {
     setError('');
     try {
-      const [d, s] = await Promise.all([fetchSurveyForStaff(token), listSavedYosekata(code)]);
-      setRefs(d.refs); setSaved(s);
+      const [d, s, ss] = await Promise.all([fetchSurveyForStaff(token), listSavedYosekata(code), listStaffSources(token)]);
+      setRefs(d.refs); setSaved(s); setStaffSources(ss);
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
   }, [token, code]);
   useEffect(() => { load(); }, [load]);
-  // アンケート欄で似ている人を追加・測定したら、計算し直す
+  // アンケート欄で似ている人を追加・測定したら計算し直す。運営の写真が上がったら読み直す
   useEffect(() => {
     window.addEventListener('pilot-refs-updated', load);
-    return () => window.removeEventListener('pilot-refs-updated', load);
+    window.addEventListener(STAFF_SOURCE_EVENT, load);
+    return () => { window.removeEventListener('pilot-refs-updated', load); window.removeEventListener(STAFF_SOURCE_EVENT, load); };
   }, [load]);
 
-  const bundle = useMemo(() => subject && refs ? buildYoseBundle(code, subject.metrics, refs, purpose) : null, [code, subject, refs, purpose]);
+  // 既定：記録の中央値があればそれ、無ければ最新の運営の写真
+  useEffect(() => {
+    if (subjSel === 'records' && recSubject) return;
+    if (subjSel.startsWith('staff:') && staffSources.some(x => `staff:${x.id}` === subjSel)) return;
+    setSubjSel(recSubject ? 'records' : staffSources[0] ? `staff:${staffSources[0].id}` : '');
+  }, [recSubject, staffSources, subjSel]);
+
+  const staffSubject = subjSel.startsWith('staff:') ? staffSources.find(x => `staff:${x.id}` === subjSel) ?? null : null;
+  const subjectMetrics = staffSubject?.metrics ?? (subjSel === 'records' ? recSubject?.metrics : null) ?? null;
+
+  const bundle = useMemo(() => subjectMetrics && refs ? buildYoseBundle(code, subjectMetrics, refs, purpose) : null, [code, subjectMetrics, refs, purpose]);
   const current = bundle?.results[Math.min(sel, bundle.results.length - 1)]?.result ?? null;
 
   const save = async () => {
-    if (!subject || !bundle) return;
+    if (!bundle) return;
     setBusy(true); setMsg('');
-    const err = await saveYosekata(subject.id, bundle.results);
+    const err = staffSubject
+      ? await saveYosekataFromStaffSource(staffSubject.id, bundle.results)
+      : recSubject ? await saveYosekata(recSubject.id, bundle.results) : '本人の写真がありません';
     setBusy(false);
-    setMsg(err ? `保存できませんでした（${err}）` : `保存しました（${bundle.results.length}件）`);
+    setMsg(err ? `保存できませんでした（${err}）` : `保存しました（${bundle.results.length}件）。下の「完成イメージ」の寄せ先で選べます`);
     if (!err) {
       listSavedYosekata(code).then(setSaved).catch(() => {});
       // 完成イメージ欄の「寄せ先」を読み直させる
@@ -61,11 +80,12 @@ export default function StaffYosekata({ code, token, history }: { code: string; 
     }
   };
 
+  const hasAnySubject = !!recSubject || staffSources.length > 0;
+
   return (
     <div className="rounded-2xl border border-stone-200 bg-white p-4 space-y-4">
       <div className="flex items-center gap-2 flex-wrap">
         <p className="text-sm font-semibold text-stone-800 flex items-center gap-2"><Compass className="w-4 h-4" /> 寄せ方</p>
-        {subject && <span className="text-xs text-stone-500">本人＝写り○・傾き8〜20°・近すぎないメイク前 {subject.count}枚の中央値（最新 {fmtDate(subject.takenAt)}）</span>}
         <span className="text-[10px] text-stone-400">計算の版 {YOSEKATA_VERSION}</span>
         <div className="ml-auto flex gap-2">
           <div className="flex rounded-lg border border-stone-300 overflow-hidden divide-x divide-stone-300 text-xs" title="目的：形の判定は変わらず、強度と言葉だけが変わる">
@@ -77,16 +97,40 @@ export default function StaffYosekata({ code, token, history }: { code: string; 
           {bundle && <button type="button" onClick={save} disabled={busy} className={saveBtn}><Save className="w-3.5 h-3.5" /> {busy ? '保存中…' : '保存'}</button>}
         </div>
       </div>
+
+      {/* 本人：記録の中央値か、運営がアップロードした写真か */}
+      <div className="flex flex-wrap items-start gap-2 text-xs">
+        <span className="text-stone-600 pt-1.5">本人</span>
+        <select value={subjSel} onChange={e => { setSubjSel(e.target.value); setMsg(''); }} className="rounded-lg border border-stone-200 px-2 py-1.5 text-xs text-stone-800 bg-white min-w-[16rem]" disabled={!hasAnySubject}>
+          {!hasAnySubject && <option value="">本人の写真がありません</option>}
+          {recSubject && <option value="records">記録（写り○のメイク前 {recSubject.count}枚の中央値・最新 {fmtDate(recSubject.takenAt)}）</option>}
+          {staffSources.map(x => <option key={x.id} value={`staff:${x.id}`}>運営の写真 {fmtDate(x.created_at)}{x.framing?.ok ? '' : '（写り×）'}</option>)}
+        </select>
+        <StaffSourceUpload token={token} code={code} onUploaded={row => { setSubjSel(`staff:${row.id}`); setMsg(''); }} />
+      </div>
+      {staffSubject && (
+        <p className="text-[11px] text-stone-500">
+          運営の写真を本人にして計算しています。記録の中央値・要撮り直しの判定には入りません。
+          {staffSubject.framing && !staffSubject.framing.ok && <span className="text-rose-700">　写り×：{staffSubject.framing.warnings?.join('／')}</span>}
+        </p>
+      )}
+
       {msg && <p className="text-xs text-stone-600">{msg}</p>}
       {error && <p className="text-xs text-rose-700">{error}</p>}
-      {!subject && (retake
-        ? <p className="text-xs font-semibold text-amber-700">{retake.label}：{retake.reason}。写り○・傾き 8〜20°・近すぎないメイク前が1枚入ると、寄せ方が出ます。</p>
-        : <p className="text-xs text-stone-500">まだ撮影がないので、寄せ方は出せません。</p>)}
-      {subject && !refs && !error && <p className="text-xs text-stone-400">読み込んでいます…</p>}
+      {!recSubject && retake && (
+        <p className="text-xs font-semibold text-amber-700">
+          {retake.label}：{retake.reason}。
+          {staffSources.length ? '下の計算は運営の写真を本人にしています。' : '写り○・傾き 8〜20°・近すぎないメイク前が1枚入るか、「運営がアップロード」で本人の写真を1枚入れると、寄せ方が出ます。'}
+        </p>
+      )}
+      {!recSubject && !retake && !staffSources.length && <p className="text-xs text-stone-500">まだ撮影がないので、寄せ方は出せません（「運営がアップロード」で本人の写真を入れると出せます）。</p>}
+      {subjectMetrics && !refs && !error && <p className="text-xs text-stone-400">読み込んでいます…</p>}
 
-      {subject && bundle && (
+      {bundle && (
         <>
-          <SubjectPhoto recordId={subject.id} />
+          {staffSubject
+            ? <SubjectPhoto path={staffSubject.image_path} guide={staffSubject.guide} />
+            : recSubject && <SubjectPhoto recordId={recSubject.id} />}
 
           {bundle.summary.length > 0 && <SummaryTable bundle={bundle} />}
           {bundle.results.length === 1 && <p className="text-xs text-stone-500">測定済みの「似ている人」がまだいないので、黄金比だけで出しています（アンケート欄で測定・保存すると増えます）。</p>}
@@ -247,7 +291,8 @@ function SummaryTable({ bundle }: { bundle: NonNullable<ReturnType<typeof buildY
 }
 
 /** 本人の素顔に三角形（本人＝黒、黄金比＝赤点線）。写真の縦横比は変えない */
-function SubjectPhoto({ recordId }: { recordId: string }) {
+// 記録（recordId）か、運営の写真（path＋guide）のどちらか
+function SubjectPhoto({ recordId, path, guide: staffGuide }: { recordId?: string; path?: string; guide?: DetectedGuide | null }) {
   const [guide, setGuide] = useState<DetectedGuide | null>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
@@ -256,7 +301,10 @@ function SubjectPhoto({ recordId }: { recordId: string }) {
   useEffect(() => {
     let alive = true;
     setState('loading'); setSize(null);
-    fetchRecordGuide(recordId).then(async d => {
+    const fetchGuide = path
+      ? Promise.resolve({ guide: staffGuide ?? null, image_path: path })
+      : fetchRecordGuide(recordId!);
+    fetchGuide.then(async d => {
       if (!alive) return;
       if (!d?.guide || !d.image_path) { setState('none'); return; }
       const urls = await staffMediaUrls([d.image_path]);
@@ -264,7 +312,8 @@ function SubjectPhoto({ recordId }: { recordId: string }) {
       setGuide(d.guide); setUrl(urls[d.image_path] ?? null); setState(urls[d.image_path] ? 'ok' : 'none');
     }).catch(() => { if (alive) setState('none'); });
     return () => { alive = false; };
-  }, [recordId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recordId, path]);
 
   if (state === 'loading') return <p className="text-xs text-stone-400">写真を読み込んでいます…</p>;
   if (state === 'none' || !guide || !url) return <p className="text-xs text-stone-400">写真がないため、三角形の重ね描きは出せません。</p>;

@@ -13,9 +13,10 @@ import { fetchSurveyForStaff, type SurveyAnswers } from '@/lib/pilot/survey';
 import { YOSE_METRICS } from '@/lib/pilot/yosekata';
 import { listSavedYosekataResults, type SavedYoseRow } from '@/lib/pilot/yosekataStaff';
 import type { YoseResult } from '@/lib/pilot/yosekata';
+import StaffSourceUpload, { STAFF_SOURCE_EVENT } from './StaffSourceUpload';
 import { buildStrengthenPrompt, ENGINE_NOTES, type RenderEngine, type RenderPurpose } from '@/lib/pilot/renderPrompt';
 import {
-  buildPrompt, fetchRenderStatus, generateRender, listRenders, listStaffSources, measureSource, promptOptionsFromSurvey, setRenderDecision, uploadStaffSource,
+  buildPrompt, fetchRenderStatus, generateRender, listRenders, listStaffSources, measureSource, promptOptionsFromSurvey, setRenderDecision,
   RENDER_ENGINE_LABEL, RENDER_PURPOSE_LABEL, type RenderDecision, type RenderRow, type RenderSource, type RenderStatus, type StaffSourceRow,
 } from '@/lib/pilot/render';
 
@@ -108,19 +109,19 @@ export default function StaffRender({ code, token, history }: { code: string; to
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [srcId, staffSel?.id, recSel?.id]);
 
-  const [uploading, setUploading] = useState(false);
-  const upload = async (file: File | undefined) => {
-    if (!file) return;
-    setUploading(true); setError('');
-    try {
-      const row = await uploadStaffSource(token, code, file);
-      await loadStaffSources();
-      setSrcId(`staff:${row.id}`);
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-    setUploading(false);
-  };
+  // 運営の写真が上がったら（どちらの欄からでも）一覧を読み直す
+  useEffect(() => {
+    const onAdded = () => { loadStaffSources().catch(e => setError(e instanceof Error ? e.message : String(e))); };
+    window.addEventListener(STAFF_SOURCE_EVENT, onAdded);
+    return () => window.removeEventListener(STAFF_SOURCE_EVENT, onAdded);
+  }, [loadStaffSources]);
 
   const yose = saved?.find(s => s.id === yoseId) ?? null;
+  // 運営の写真から作った寄せ方を選んだら、素顔も同じ写真にする（比較の基準を揃える）
+  useEffect(() => {
+    const sid = yose?.staff_source_id;
+    if (sid && staffSources.some(x => x.id === sid)) setSrcId(`staff:${sid}`);
+  }, [yose?.staff_source_id, staffSources]);
   const surveyOpts = useMemo(() => promptOptionsFromSurvey(answers), [answers]);
   const basePrompt = useMemo(() => yose ? buildPrompt(yose.result, 'gemini', purpose, surveyOpts) : '', [yose, purpose, surveyOpts]);
   const prompt = override ?? basePrompt;
@@ -186,17 +187,13 @@ export default function StaffRender({ code, token, history }: { code: string; to
       <div className="grid gap-2 sm:grid-cols-2 text-xs">
           <div className="flex flex-col gap-1 text-stone-600">
             <span>素顔</span>
-            <div className="flex gap-2 items-center">
+            <div className="flex gap-2 items-start">
               <select value={srcId} onChange={e => setSrcId(e.target.value)} className={`${sel} flex-1`} disabled={!befores.length && !staffSources.length}>
                 {!befores.length && !staffSources.length && <option value="">素顔がありません</option>}
                 {befores.map((b, i) => <option key={b.id} value={b.id}>{fmtDate(b.takenAt)}{i === 0 ? '（最新）' : ''}</option>)}
                 {staffSources.map(s => <option key={s.id} value={`staff:${s.id}`}>運営 {fmtDate(s.created_at)}{s.framing?.ok ? '' : '（写り×）'}</option>)}
               </select>
-              <label className={`${ghost} cursor-pointer whitespace-nowrap ${uploading ? 'opacity-40 pointer-events-none' : ''}`}>
-                <ImagePlus className="w-3.5 h-3.5" /> {uploading ? '測っています…' : '運営がアップロード'}
-                <input type="file" accept="image/*" className="hidden" disabled={uploading}
-                  onChange={e => { upload(e.target.files?.[0]); e.target.value = ''; }} />
-              </label>
+              <StaffSourceUpload token={token} code={code} onUploaded={row => { loadStaffSources().then(() => setSrcId(`staff:${row.id}`)).catch(() => {}); }} />
             </div>
             {srcFraming && <FramingLine f={srcFraming} staff={!!staffSel} />}
           </div>
@@ -208,6 +205,7 @@ export default function StaffRender({ code, token, history }: { code: string; to
                   {s.target_kind === 'ideal' ? '黄金比' : s.target_name}
                   {s.result.config.purpose ? `・${PURPOSE_JA[s.result.config.purpose] ?? s.result.config.purpose}` : ''}
                   {`・${fmtDate(s.created_at)}`}
+                  {s.staff_source_id ? '（運営の写真）' : ''}
                 </option>
               ))}
             </select>

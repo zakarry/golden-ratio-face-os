@@ -7,6 +7,7 @@ import { measureReferenceImage } from './referenceMeasure';
 import type { PilotMetrics } from './targetCard';
 import { dataUrlToBlob, shrinkImage, type SurveyAnswers } from './survey';
 import type { FramingCheck } from './pilotStorage';
+import type { DetectedGuide } from '@/lib/faceLandmarks';
 import { YOSE_METRICS, deriveYoseValues, type YoseMetricId, type YoseResult } from './yosekata';
 import { buildRenderPrompt, type RenderEngine, type RenderPurpose, type RenderPromptOptions } from './renderPrompt';
 
@@ -133,6 +134,7 @@ export interface StaffSourceRow {
   image_height: number;
   metrics: PilotMetrics;
   framing: FramingCheck;
+  guide: DetectedGuide | null;
   note: string | null;
   created_by: string | null;
   created_at: string;
@@ -146,20 +148,45 @@ export async function listStaffSources(token: string): Promise<StaffSourceRow[]>
   return (data ?? []) as StaffSourceRow[];
 }
 
-/** 写真を測ってから保存する（顔が取れない写真は保存しない）。縦横比は変えずに長辺 2048 まで縮める */
-export async function uploadStaffSource(token: string, subjectCode: string, file: File): Promise<StaffSourceRow> {
+/** 写真を JPEG に（縦横比は変えずに長辺 maxSide まで）。createImageBitmap で読めない形式は <img> でも試す */
+async function toJpeg(file: File, maxSide: number): Promise<{ dataUrl: string; width: number; height: number }> {
+  try { return await shrinkImage(file, maxSide); } catch { /* 下で <img> を試す */ }
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((ok, ng) => { const el = new Image(); el.onload = () => ok(el); el.onerror = ng; el.src = url; });
+    const s = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.round(img.naturalWidth * s), h = Math.round(img.naturalHeight * s);
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    c.getContext('2d')!.drawImage(img, 0, 0, w, h);
+    return { dataUrl: c.toDataURL('image/jpeg', 0.9), width: w, height: h };
+  } catch {
+    const heic = /heic|heif/i.test(file.type) || /\.(heic|heif)$/i.test(file.name);
+    throw new Error(heic
+      ? 'HEIC（iPhone の写真形式）はこのブラウザで読めません。JPEG で保存し直すか、iPhone の設定 → カメラ → フォーマットを「互換性優先」にして撮ってください'
+      : `この写真を読み込めませんでした（${file.type || file.name}）。JPEG か PNG を選んでください`);
+  } finally { URL.revokeObjectURL(url); }
+}
+
+/** 写真を測ってから保存する（顔が取れない写真は保存しない）。縦横比は変えずに長辺 2048 まで縮める。
+ *  onStep で今の段階を返す（画面に出す）。失敗したら段階の名前つきで投げる */
+export async function uploadStaffSource(token: string, subjectCode: string, file: File, onStep?: (s: string) => void): Promise<StaffSourceRow> {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error('Supabase 未設定');
-  const s = await shrinkImage(file, 2048);
-  const m = await measureReferenceImage(s.dataUrl);
-  if (!m) throw new Error('顔を見つけられませんでした。正面の写真を選んでください');
+  onStep?.('写真を読み込んでいます…');
+  const s = await toJpeg(file, 2048);
+  onStep?.('顔を測っています…（初回は数秒かかります）');
+  let m: Awaited<ReturnType<typeof measureReferenceImage>>;
+  try { m = await measureReferenceImage(s.dataUrl); }
+  catch (e) { throw new Error(`顔の測定でエラーになりました（${e instanceof Error ? e.message : String(e)}）`); }
+  if (!m) throw new Error('顔を見つけられませんでした。顔が正面で大きめに写った写真を選んでください');
+  onStep?.('保存しています…');
   const path = `${token}/staff_source/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
   const { error: upErr } = await supabase.storage.from('pilot-photos').upload(path, dataUrlToBlob(s.dataUrl), { contentType: 'image/jpeg' });
   if (upErr) throw new Error(`写真を保存できませんでした（${upErr.message}）`);
   const { data: u } = await supabase.auth.getUser();
   const { data, error } = await supabase.from('pilot_staff_sources').insert({
     token, subject_code: subjectCode, image_path: path, image_width: m.imageWidth, image_height: m.imageHeight,
-    metrics: m.metrics, framing: m.framing, created_by: u.user?.email ?? null,
+    metrics: m.metrics, framing: m.framing, guide: m.guide, created_by: u.user?.email ?? null,
   }).select('*').single();
   if (error) {
     await supabase.storage.from('pilot-photos').remove([path]);

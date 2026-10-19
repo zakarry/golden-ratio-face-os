@@ -87,9 +87,28 @@ export async function saveYosekata(recordId: string, items: YoseBundle['results'
   return null;
 }
 
+/** 運営がアップロードした写真を本人にして保存する（本人の値＝記録の中央値・要撮り直しには入らない） */
+export async function saveYosekataFromStaffSource(staffSourceId: string, items: YoseBundle['results']): Promise<string | null> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return 'Supabase 未設定';
+  for (const { result, referenceId } of items) {
+    const { error } = await supabase.rpc('pilot_staff_save_yosekata_src', {
+      p_id: `yose_staff_${staffSourceId}_${referenceId ?? 'ideal'}_${YOSEKATA_VERSION}${result.config.purpose ? `_${result.config.purpose}` : ''}`,
+      p_staff_source_id: staffSourceId, p_reference_id: referenceId ?? '',
+      p_target_kind: result.targetKind, p_target_name: result.targetName,
+      p_result: result, p_text: result.text, p_version: result.config.version,
+    });
+    if (error) return error.message;
+  }
+  return null;
+}
+
 export interface SavedYoseRow {
   id: string;
-  record_id: string;
+  /** 撮影記録から計算したとき */
+  record_id: string | null;
+  /** 運営がアップロードした写真から計算したとき */
+  staff_source_id: string | null;
   reference_id: string | null;
   target_kind: string;
   target_name: string;
@@ -103,7 +122,7 @@ export async function listSavedYosekata(subjectCode: string): Promise<SavedYoseR
   const supabase = getSupabaseClient();
   if (!supabase) return [];
   const { data, error } = await supabase.from('pilot_yosekata')
-    .select('id, record_id, reference_id, target_kind, target_name, text, version, created_by, created_at')
+    .select('id, record_id, staff_source_id, reference_id, target_kind, target_name, text, version, created_by, created_at')
     .eq('subject_code', subjectCode).order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as SavedYoseRow[];
@@ -114,7 +133,7 @@ export async function listSavedYosekataResults(subjectCode: string): Promise<(Sa
   const supabase = getSupabaseClient();
   if (!supabase) return [];
   const { data, error } = await supabase.from('pilot_yosekata')
-    .select('id, record_id, reference_id, target_kind, target_name, text, version, created_by, created_at, result')
+    .select('id, record_id, staff_source_id, reference_id, target_kind, target_name, text, version, created_by, created_at, result')
     .eq('subject_code', subjectCode).order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as (SavedYoseRow & { result: YoseResult })[];

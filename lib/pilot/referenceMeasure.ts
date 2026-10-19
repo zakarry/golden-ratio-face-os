@@ -1,7 +1,7 @@
 // スタッフ用：参加者が挙げた「似ている人」の写真を測って 12 指標を保存する
 // 本人の設計図（pilot_records.metrics）と同じ computePilotMetrics を使うので、そのまま並べられる。
 
-import { detectFaceLandmarks } from '@/lib/faceLandmarks';
+import { detectFaceLandmarks, type DetectedGuide } from '@/lib/faceLandmarks';
 import { computePilotMetrics, type PilotMetrics, type MetricId, METRIC_DEFS } from '@/lib/pilot/targetCard';
 import { checkFraming, type FramingCheck } from '@/lib/pilot/pilotStorage';
 import { ensureAnonymousSession, getSupabaseClient } from '@/lib/supabaseClient';
@@ -11,6 +11,8 @@ export interface ReferenceMeasurement {
   framing: FramingCheck;
   imageWidth: number;
   imageHeight: number;
+  /** 顔の位置（写真に三角形を描くため） */
+  guide: DetectedGuide;
 }
 
 /** storage のパス（または任意の画像URL/dataURL）から測定する */
@@ -19,7 +21,7 @@ export async function measureReferenceImage(src: string): Promise<ReferenceMeasu
   if (!g) return null;
   const w = g.imageWidth ?? 0, h = g.imageHeight ?? 0;
   if (!w || !h) return null;
-  return { metrics: computePilotMetrics(g, w, h), framing: checkFraming(g, w, h), imageWidth: w, imageHeight: h };
+  return { metrics: computePilotMetrics(g, w, h), framing: checkFraming(g, w, h), imageWidth: w, imageHeight: h, guide: g };
 }
 
 /** storage の private 画像を署名付きURLで取る（スタッフのみ読める） */
