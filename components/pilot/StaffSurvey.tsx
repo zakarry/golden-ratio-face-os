@@ -10,6 +10,7 @@ import { addStaffReference, flattenAnswers, fetchSurveyForStaff, REFERENCE_KIND_
 import { measureReferenceImage, saveReferenceMetrics, signedUrl, type ReferenceMeasurement } from '@/lib/pilot/referenceMeasure';
 import type { PilotMetrics } from '@/lib/pilot/targetCard';
 import { CompareTable } from './RefCompare';
+import { openFresh } from '@/lib/pilot/openFresh';
 
 const KINDS: ReferenceKind[] = ['self_happy', 'others_say', 'dislike', 'staff_say'];
 
@@ -84,9 +85,11 @@ function ReferenceRow({ r, subjectMetrics, onSaved }: { r: StaffReferenceRow; su
   }, [r.image_path]);
 
   const measure = async () => {
-    if (!url) return;
+    if (!url || !r.image_path) return;
     setBusy(true); setMsg(''); setResult(null);
-    const m = await measureReferenceImage(url);
+    // 表示中の URL は10分で切れるので、測る直前に取り直す
+    const fresh = (await signedUrl(r.image_path)) ?? url;
+    const m = await measureReferenceImage(fresh);
     setBusy(false);
     if (!m) { setMsg('顔を検出できませんでした（正面の写真か確認してください）'); return; }
     setResult(m);
@@ -109,7 +112,7 @@ function ReferenceRow({ r, subjectMetrics, onSaved }: { r: StaffReferenceRow; su
         <div className="w-20 shrink-0">
           {url
             // eslint-disable-next-line @next/next/no-img-element
-            ? <a href={url} target="_blank" rel="noreferrer"><img src={url} alt={r.person_name} className="w-20 max-w-none rounded-lg border border-stone-200" /></a>
+            ? <a href={url} target="_blank" rel="noreferrer" onClick={e => openFresh(e, () => signedUrl(r.image_path!))}><img src={url} alt={r.person_name} className="w-20 max-w-none rounded-lg border border-stone-200" /></a>
             : <div className="w-20 h-24 rounded-lg border border-dashed border-stone-200 flex items-center justify-center text-stone-300"><ImageOff className="w-4 h-4" /></div>}
         </div>
         <div className="min-w-0 flex-1 space-y-1">

@@ -9,6 +9,7 @@ import { METRIC_DEFS, formatMetric, type MetricId } from '@/lib/pilot/targetCard
 import type { Prescription } from '@/lib/pilot/prescription';
 import type { PilotHistoryItem } from '@/lib/pilot/pilotStorage';
 import { yoseStrengths } from '@/lib/pilot/yoseStrengths';
+import { openFresh } from '@/lib/pilot/openFresh';
 
 /** 推移を見せる指標（額の推定に頼らないものを中心に） */
 const TREND_METRICS: MetricId[] = ['eyeDist', 'eyeWidth', 'eyeAngle', 'faceRatio', 'zone3', 'philtrum'];
@@ -57,13 +58,15 @@ export default function PilotHistory({ history, getUrls, showPhotos = false }: {
     <div className="space-y-5">
       <GapTrend history={history} />
       <div className="space-y-3">
-        {[...sessions].reverse().map(s => <SessionCard key={s.date} session={s} urls={urls} showPhotos={showPhotos} />)}
+        {[...sessions].reverse().map(s => <SessionCard key={s.date} session={s} urls={urls} showPhotos={showPhotos} getUrls={getUrls} />)}
       </div>
     </div>
   );
 }
 
-function SessionCard({ session, urls, showPhotos }: { session: Session; urls: Record<string, string>; showPhotos: boolean }) {
+type GetUrls = (paths: string[]) => Promise<Record<string, string>>;
+
+function SessionCard({ session, urls, showPhotos, getUrls }: { session: Session; urls: Record<string, string>; showPhotos: boolean; getUrls: GetUrls }) {
   const lastBefore = [...session.items].reverse().find(i => i.phase === 'before');
   const lastAfter = [...session.items].reverse().find(i => i.phase === 'after');
   return (
@@ -71,13 +74,13 @@ function SessionCard({ session, urls, showPhotos }: { session: Session; urls: Re
       <p className="text-sm font-semibold text-stone-800">第{session.no}回　<span className="text-xs font-normal text-stone-500">{fmtDate(session.date)}・{session.items.length}枚</span></p>
       {lastBefore && lastAfter && <MakeupEffect before={lastBefore} after={lastAfter} />}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {session.items.map(h => <CaptureCard key={h.id} h={h} urls={urls} showPhotos={showPhotos} />)}
+        {session.items.map(h => <CaptureCard key={h.id} h={h} urls={urls} showPhotos={showPhotos} getUrls={getUrls} />)}
       </div>
     </div>
   );
 }
 
-function CaptureCard({ h, urls, showPhotos }: { h: PilotHistoryItem; urls: Record<string, string>; showPhotos: boolean }) {
+function CaptureCard({ h, urls, showPhotos, getUrls }: { h: PilotHistoryItem; urls: Record<string, string>; showPhotos: boolean; getUrls: GetUrls }) {
   const [open, setOpen] = useState(false);
   const bp = h.blueprintPath ? urls[h.blueprintPath] : undefined;
   const dm = h.dimensionPath ? urls[h.dimensionPath] : undefined;
@@ -91,9 +94,9 @@ function CaptureCard({ h, urls, showPhotos }: { h: PilotHistoryItem; urls: Recor
       </div>
       {/* 写真（スタッフのみ）・バランス図・寸法図 */}
       <div className={`grid gap-2 ${ph ? 'grid-cols-3' : 'grid-cols-2'}`}>
-        {ph && <Pic url={ph} alt="写真" label="写真" />}
-        <Pic url={bp} alt="顔の設計図" label="設計図" />
-        <Pic url={dm} alt="寸法図" label="寸法図" />
+        {ph && <Pic url={ph} path={h.imagePath} getUrls={getUrls} alt="写真" label="写真" />}
+        <Pic url={bp} path={h.blueprintPath} getUrls={getUrls} alt="顔の設計図" label="設計図" />
+        <Pic url={dm} path={h.dimensionPath} getUrls={getUrls} alt="寸法図" label="寸法図" />
       </div>
       {h.framing && !h.framing.ok && <p className="text-amber-700 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> 写りに注意（{h.framing.warnings.join('・')}）</p>}
       {k && (
@@ -122,13 +125,13 @@ function CaptureCard({ h, urls, showPhotos }: { h: PilotHistoryItem; urls: Recor
   );
 }
 
-/** 画像1枚（押すと元の大きさで開く）。無いときは空の枠 */
-function Pic({ url, alt, label }: { url?: string; alt: string; label: string }) {
+/** 画像1枚（押すと元の大きさで開く。開くときに URL を取り直す）。無いときは空の枠 */
+function Pic({ url, path, getUrls, alt, label }: { url?: string; path?: string | null; getUrls: GetUrls; alt: string; label: string }) {
   return (
     <div className="space-y-0.5">
       {url
         // eslint-disable-next-line @next/next/no-img-element
-        ? <a href={url} target="_blank" rel="noreferrer"><img src={url} alt={alt} className="w-full rounded-lg border border-stone-200" /></a>
+        ? <a href={url} target="_blank" rel="noreferrer" onClick={path ? e => openFresh(e, () => getUrls([path]).then(u => u[path])) : undefined}><img src={url} alt={alt} className="w-full rounded-lg border border-stone-200" /></a>
         : <div className="aspect-[3/4] rounded-lg border border-dashed border-stone-200 flex items-center justify-center text-stone-300"><ImageOff className="w-5 h-5" /></div>}
       <p className="text-[10px] text-stone-400 text-center">{label}</p>
     </div>
