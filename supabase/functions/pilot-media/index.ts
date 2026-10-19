@@ -25,8 +25,8 @@ Deno.serve(async (req) => {
   if (paths.some(p => !p.startsWith(`${token}/`) || p.includes('..'))) return json({ error: 'forbidden' }, 403);
   // 運営が入れた「運営が見る人」の写真（<token>/survey/staff_…）は本人には出さない
   if (paths.some(p => p.includes('/survey/staff_'))) return json({ error: 'forbidden' }, 403);
-  // 完成イメージ（<token>/render/…）は運営専用。本人には出さない
-  if (paths.some(p => p.includes('/render/'))) return json({ error: 'forbidden' }, 403);
+  // 完成イメージ（<token>/render/…）と運営がアップロードした素顔（<token>/staff_source/…）は運営専用。本人には出さない
+  if (paths.some(p => p.includes('/render/') || p.includes('/staff_source/'))) return json({ error: 'forbidden' }, 403);
 
   const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
   const { data: participant } = await admin.from('pilot_participants').select('token').eq('token', token).maybeSingle();

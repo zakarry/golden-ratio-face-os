@@ -5,7 +5,8 @@
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import { measureReferenceImage } from './referenceMeasure';
 import type { PilotMetrics } from './targetCard';
-import type { SurveyAnswers } from './survey';
+import { dataUrlToBlob, shrinkImage, type SurveyAnswers } from './survey';
+import type { FramingCheck } from './pilotStorage';
 import { YOSE_METRICS, deriveYoseValues, type YoseMetricId, type YoseResult } from './yosekata';
 import { buildRenderPrompt, type RenderEngine, type RenderPurpose, type RenderPromptOptions } from './renderPrompt';
 
@@ -119,6 +120,52 @@ export async function measureSource(url: string, recordId: string, path: string,
   img.crossOrigin = 'anonymous';
   await new Promise<void>((ok, ng) => { img.onload = () => ok(); img.onerror = () => ng(new Error('素顔の写真を読み込めませんでした')); img.src = url; });
   return { recordId, path, metrics: stored, width: img.naturalWidth, height: img.naturalHeight };
+}
+
+// ── 運営がアップロードした素顔（<token>/staff_source/）。完成イメージの比較基準にだけ使い、本人の値には混ぜない
+
+export interface StaffSourceRow {
+  id: string;
+  token: string;
+  subject_code: string;
+  image_path: string;
+  image_width: number;
+  image_height: number;
+  metrics: PilotMetrics;
+  framing: FramingCheck;
+  note: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export async function listStaffSources(token: string): Promise<StaffSourceRow[]> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('pilot_staff_sources').select('*').eq('token', token).order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as StaffSourceRow[];
+}
+
+/** 写真を測ってから保存する（顔が取れない写真は保存しない）。縦横比は変えずに長辺 2048 まで縮める */
+export async function uploadStaffSource(token: string, subjectCode: string, file: File): Promise<StaffSourceRow> {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error('Supabase 未設定');
+  const s = await shrinkImage(file, 2048);
+  const m = await measureReferenceImage(s.dataUrl);
+  if (!m) throw new Error('顔を見つけられませんでした。正面の写真を選んでください');
+  const path = `${token}/staff_source/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
+  const { error: upErr } = await supabase.storage.from('pilot-photos').upload(path, dataUrlToBlob(s.dataUrl), { contentType: 'image/jpeg' });
+  if (upErr) throw new Error(`写真を保存できませんでした（${upErr.message}）`);
+  const { data: u } = await supabase.auth.getUser();
+  const { data, error } = await supabase.from('pilot_staff_sources').insert({
+    token, subject_code: subjectCode, image_path: path, image_width: m.imageWidth, image_height: m.imageHeight,
+    metrics: m.metrics, framing: m.framing, created_by: u.user?.email ?? null,
+  }).select('*').single();
+  if (error) {
+    await supabase.storage.from('pilot-photos').remove([path]);
+    throw new Error(`記録できませんでした（${error.message}）`);
+  }
+  return data as StaffSourceRow;
 }
 
 export function buildPrompt(yose: YoseResult, engine: RenderEngine, purpose: RenderPurpose, extra?: Partial<RenderPromptOptions>) {

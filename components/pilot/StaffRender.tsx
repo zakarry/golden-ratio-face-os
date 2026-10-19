@@ -6,8 +6,8 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Check, ImagePlus, RefreshCw, Sparkles, X, Zap } from 'lucide-react';
-import type { PilotHistoryItem } from '@/lib/pilot/pilotStorage';
-import { usableBefore } from '@/lib/pilot/pilotStorage';
+import type { FramingCheck, PilotHistoryItem } from '@/lib/pilot/pilotStorage';
+import { FRAMING_LIMITS, usableBefore } from '@/lib/pilot/pilotStorage';
 import { staffMediaUrls } from '@/lib/pilot/staff';
 import { fetchSurveyForStaff, type SurveyAnswers } from '@/lib/pilot/survey';
 import { YOSE_METRICS } from '@/lib/pilot/yosekata';
@@ -15,8 +15,8 @@ import { listSavedYosekataResults, type SavedYoseRow } from '@/lib/pilot/yosekat
 import type { YoseResult } from '@/lib/pilot/yosekata';
 import { buildStrengthenPrompt, ENGINE_NOTES, type RenderEngine, type RenderPurpose } from '@/lib/pilot/renderPrompt';
 import {
-  buildPrompt, fetchRenderStatus, generateRender, listRenders, measureSource, promptOptionsFromSurvey, setRenderDecision,
-  RENDER_ENGINE_LABEL, RENDER_PURPOSE_LABEL, type RenderDecision, type RenderRow, type RenderSource, type RenderStatus,
+  buildPrompt, fetchRenderStatus, generateRender, listRenders, listStaffSources, measureSource, promptOptionsFromSurvey, setRenderDecision, uploadStaffSource,
+  RENDER_ENGINE_LABEL, RENDER_PURPOSE_LABEL, type RenderDecision, type RenderRow, type RenderSource, type RenderStatus, type StaffSourceRow,
 } from '@/lib/pilot/render';
 
 const ENGINES: RenderEngine[] = ['gemini', 'openai'];
@@ -29,6 +29,9 @@ type SavedYose = SavedYoseRow & { result: YoseResult };
 export default function StaffRender({ code, token, history }: { code: string; token: string; history: PilotHistoryItem[] }) {
   // 素顔の候補：写り○・傾き 8〜20°・近すぎないメイク前（新しい順）
   const befores = useMemo(() => history.filter(h => h.imagePath && h.metrics && usableBefore(h)).sort((a, b) => b.takenAt.localeCompare(a.takenAt)), [history]);
+  // 運営がアップロードした素顔（本人の値には混ぜない。ここの比較基準にだけ使う）
+  const [staffSources, setStaffSources] = useState<StaffSourceRow[]>([]);
+  // 素顔の選択：記録は id、運営アップロードは 'staff:' + id
   const [srcId, setSrcId] = useState<string>('');
   const [source, setSource] = useState<RenderSource | null>(null);
   const [srcUrl, setSrcUrl] = useState<string | null>(null);
@@ -46,7 +49,13 @@ export default function StaffRender({ code, token, history }: { code: string; to
   const [errors, setErrors] = useState<Partial<Record<RenderEngine, string>>>({});
   const [error, setError] = useState('');
 
-  useEffect(() => { if (!srcId && befores[0]) setSrcId(befores[0].id); }, [befores, srcId]);
+  useEffect(() => {
+    if (srcId) return;
+    if (befores[0]) setSrcId(befores[0].id);
+    else if (staffSources[0]) setSrcId(`staff:${staffSources[0].id}`);
+  }, [befores, staffSources, srcId]);
+
+  const loadStaffSources = useCallback(async () => { setStaffSources(await listStaffSources(token)); }, [token]);
 
   const loadRenders = useCallback(async () => {
     const rows = await listRenders(token);
@@ -64,11 +73,11 @@ export default function StaffRender({ code, token, history }: { code: string; to
 
   useEffect(() => {
     setError('');
-    Promise.all([loadSaved(), fetchSurveyForStaff(token), loadRenders()])
+    Promise.all([loadSaved(), fetchSurveyForStaff(token), loadRenders(), loadStaffSources()])
       .then(([, sv]) => { setAnswers(sv.survey?.answers ?? null); })
       .catch(e => setError(e instanceof Error ? e.message : String(e)));
     fetchRenderStatus().then(setStatus).catch(e => setStatusErr(e instanceof Error ? e.message : String(e)));
-  }, [token, loadSaved, loadRenders]);
+  }, [token, loadSaved, loadRenders, loadStaffSources]);
 
   // 上の「寄せ方」で保存したら、寄せ先の一覧を読み直す
   useEffect(() => {
@@ -77,21 +86,39 @@ export default function StaffRender({ code, token, history }: { code: string; to
     return () => window.removeEventListener('pilot-yosekata-saved', onSaved);
   }, [loadSaved]);
 
-  // 素顔：選んだ記録の写真をブラウザで測り直す
+  // 素顔：記録の写真はブラウザで測り直す。運営アップロードはアップロード時に同じ経路で測った値を使う
+  const staffSel = srcId.startsWith('staff:') ? staffSources.find(s => `staff:${s.id}` === srcId) ?? null : null;
+  const recSel = staffSel ? null : befores.find(b => b.id === srcId) ?? null;
+  const srcFraming: FramingCheck | null = staffSel?.framing ?? recSel?.framing ?? null;
   useEffect(() => {
-    const rec = befores.find(b => b.id === srcId);
-    if (!rec?.imagePath) return;
+    const path = staffSel?.image_path ?? recSel?.imagePath;
+    if (!path) return;
     let alive = true;
     setSource(null); setSrcUrl(null);
     (async () => {
-      const u = (await staffMediaUrls([rec.imagePath!]))[rec.imagePath!];
+      const u = (await staffMediaUrls([path]))[path];
       if (!alive || !u) return;
       setSrcUrl(u);
-      const s = await measureSource(u, rec.id, rec.imagePath!, rec.metrics);
+      const s: RenderSource = staffSel
+        ? { recordId: staffSel.id, path, metrics: staffSel.metrics, width: staffSel.image_width, height: staffSel.image_height }
+        : await measureSource(u, recSel!.id, path, recSel!.metrics);
       if (alive) setSource(s);
     })().catch(e => { if (alive) setError(e instanceof Error ? e.message : String(e)); });
     return () => { alive = false; };
-  }, [srcId, befores]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [srcId, staffSel?.id, recSel?.id]);
+
+  const [uploading, setUploading] = useState(false);
+  const upload = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true); setError('');
+    try {
+      const row = await uploadStaffSource(token, code, file);
+      await loadStaffSources();
+      setSrcId(`staff:${row.id}`);
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    setUploading(false);
+  };
 
   const yose = saved?.find(s => s.id === yoseId) ?? null;
   const surveyOpts = useMemo(() => promptOptionsFromSurvey(answers), [answers]);
@@ -153,15 +180,26 @@ export default function StaffRender({ code, token, history }: { code: string; to
       </div>
       {error && <p className="text-xs text-rose-700">{error}</p>}
 
-      {befores.length === 0 ? (
-        <p className="text-xs text-amber-700">写り○・傾き 8〜20°・近すぎないメイク前の写真がないので、完成イメージは作れません。</p>
-      ) : (
-        <div className="grid gap-2 sm:grid-cols-2 text-xs">
-          <label className="flex flex-col gap-1 text-stone-600">素顔
-            <select value={srcId} onChange={e => setSrcId(e.target.value)} className={sel}>
-              {befores.map((b, i) => <option key={b.id} value={b.id}>{fmtDate(b.takenAt)}{i === 0 ? '（最新）' : ''}</option>)}
-            </select>
-          </label>
+      {befores.length === 0 && staffSources.length === 0 && (
+        <p className="text-xs text-amber-700">写り○・傾き 8〜20°・近すぎないメイク前の写真がありません。下の「運営がアップロード」で本人の写真を1枚入れると作れます。</p>
+      )}
+      <div className="grid gap-2 sm:grid-cols-2 text-xs">
+          <div className="flex flex-col gap-1 text-stone-600">
+            <span>素顔</span>
+            <div className="flex gap-2 items-center">
+              <select value={srcId} onChange={e => setSrcId(e.target.value)} className={`${sel} flex-1`} disabled={!befores.length && !staffSources.length}>
+                {!befores.length && !staffSources.length && <option value="">素顔がありません</option>}
+                {befores.map((b, i) => <option key={b.id} value={b.id}>{fmtDate(b.takenAt)}{i === 0 ? '（最新）' : ''}</option>)}
+                {staffSources.map(s => <option key={s.id} value={`staff:${s.id}`}>運営 {fmtDate(s.created_at)}{s.framing?.ok ? '' : '（写り×）'}</option>)}
+              </select>
+              <label className={`${ghost} cursor-pointer whitespace-nowrap ${uploading ? 'opacity-40 pointer-events-none' : ''}`}>
+                <ImagePlus className="w-3.5 h-3.5" /> {uploading ? '測っています…' : '運営がアップロード'}
+                <input type="file" accept="image/*" className="hidden" disabled={uploading}
+                  onChange={e => { upload(e.target.files?.[0]); e.target.value = ''; }} />
+              </label>
+            </div>
+            {srcFraming && <FramingLine f={srcFraming} staff={!!staffSel} />}
+          </div>
           <label className="flex flex-col gap-1 text-stone-600">寄せ先（保存済みの寄せ方。名前は記録用で、指示文には入りません）
             <select value={yoseId} onChange={e => setYoseId(e.target.value)} className={sel} disabled={!saved?.length}>
               {!saved?.length && <option value="">保存済みの寄せ方がありません（上の「寄せ方」で保存）</option>}
@@ -175,7 +213,6 @@ export default function StaffRender({ code, token, history }: { code: string; to
             </select>
           </label>
         </div>
-      )}
 
       {(surveyOpts.skinFix || surveyOpts.impression || surveyOpts.noTouch) && (
         <p className="text-[11px] text-stone-500">
@@ -278,6 +315,27 @@ function Slot({ engine, row, url, running, error, onDecide, small }: {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/** 素顔の写り：正面・傾き・上下・顔の大きさ（撮影ガイドと同じ基準） */
+function FramingLine({ f, staff }: { f: FramingCheck; staff: boolean }) {
+  const L = FRAMING_LIMITS;
+  const items: [string, string, boolean | null][] = [
+    ['正面', `${f.yaw >= 0 ? '+' : ''}${(f.yaw * 100).toFixed(1)}%`, Math.abs(f.yaw) <= L.yaw],
+    ['傾き', `${f.roll.toFixed(1)}°`, Math.abs(f.roll) <= L.roll],
+    ['上下', f.pitch != null ? `${f.pitch.toFixed(1)}°` : '—', f.pitch != null ? f.pitch >= L.pitchMin && f.pitch <= L.pitchMax : null],
+    ['顔の大きさ', f.faceWidthFrac != null ? `${(f.faceWidthFrac * 100).toFixed(0)}%` : '—', f.faceWidthFrac != null ? f.faceWidthFrac >= L.faceMin && f.faceWidthFrac <= L.faceMax : null],
+  ];
+  return (
+    <div className="space-y-0.5">
+      <p className="text-[11px] flex flex-wrap gap-x-3">
+        <span className={f.ok ? 'text-emerald-700 font-semibold' : 'text-rose-700 font-semibold'}>写り{f.ok ? '○' : '×'}</span>
+        {items.map(([k, v, ok]) => <span key={k} className={ok === null ? 'text-stone-400' : ok ? 'text-stone-600' : 'text-rose-700'}>{k} {v}</span>)}
+      </p>
+      {!f.ok && f.warnings?.length > 0 && <p className="text-[10px] text-rose-700">{f.warnings.join('／')}</p>}
+      {staff && <p className="text-[10px] text-stone-400">運営がアップロードした写真：完成イメージの比較基準にだけ使います（本人の値には入りません）</p>}
     </div>
   );
 }

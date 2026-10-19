@@ -146,8 +146,8 @@ export async function deleteParticipant(token: string): Promise<number> {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error('Supabase 未設定');
   const bucket = supabase.storage.from('pilot-photos');
-  // 撮影の写真（token/）、アンケートの参照写真（token/survey/）、完成イメージ（token/render/）を空にする
-  for (const folder of [token, `${token}/survey`, `${token}/render`]) {
+  // 撮影の写真（token/）、アンケートの参照写真（token/survey/）、完成イメージ（token/render/）、運営がアップロードした素顔（token/staff_source/）を空にする
+  for (const folder of [token, `${token}/survey`, `${token}/render`, `${token}/staff_source`]) {
     for (let round = 0; ; round++) {
       const { data: files, error } = await bucket.list(folder, { limit: 100 });
       if (error) throw new Error(`写真の一覧を取得できませんでした（${error.message}）`);

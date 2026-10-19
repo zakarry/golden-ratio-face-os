@@ -103,7 +103,7 @@ export async function shrinkImage(file: File, maxSide = 1600): Promise<{ dataUrl
   return { dataUrl: c.toDataURL('image/jpeg', 0.9), width: w, height: h };
 }
 
-function dataUrlToBlob(dataUrl: string): Blob {
+export function dataUrlToBlob(dataUrl: string): Blob {
   const [head, b64] = dataUrl.split(',');
   const mime = /data:(.*?);/.exec(head)?.[1] ?? 'image/jpeg';
   const bin = atob(b64); const u8 = new Uint8Array(bin.length);
